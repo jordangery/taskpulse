@@ -1,5 +1,14 @@
 import { formatDistanceToNow } from "date-fns"
 import { zhTW } from "date-fns/locale"
+import { FeedbackSection } from "./feedback-section"
+
+interface FeedbackData {
+  id: string
+  content: string
+  createdAt: Date
+  updatedAt: Date
+  author: { id: string; name: string }
+}
 
 interface ProgressUpdateItem {
   id: string
@@ -8,13 +17,15 @@ interface ProgressUpdateItem {
   status: string | null
   createdAt: Date
   author: { id: string; name: string }
+  feedback: FeedbackData | null
 }
 
 interface ProgressUpdateListProps {
   updates: ProgressUpdateItem[]
+  isAdmin: boolean
 }
 
-export function ProgressUpdateList({ updates }: ProgressUpdateListProps) {
+export function ProgressUpdateList({ updates, isAdmin }: ProgressUpdateListProps) {
   if (updates.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-border-default bg-surface px-6 py-10 text-center">
@@ -29,13 +40,13 @@ export function ProgressUpdateList({ updates }: ProgressUpdateListProps) {
   return (
     <ol className="space-y-3">
       {updates.map((u) => (
-        <ProgressUpdateCard key={u.id} update={u} />
+        <ProgressUpdateCard key={u.id} update={u} isAdmin={isAdmin} />
       ))}
     </ol>
   )
 }
 
-function ProgressUpdateCard({ update }: { update: ProgressUpdateItem }) {
+function ProgressUpdateCard({ update, isAdmin }: { update: ProgressUpdateItem; isAdmin: boolean }) {
   return (
     <li className="rounded-md border border-border-subtle bg-surface px-4 py-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -53,6 +64,22 @@ function ProgressUpdateCard({ update }: { update: ProgressUpdateItem }) {
         </time>
       </div>
       <p className="whitespace-pre-wrap text-sm text-text-primary">{update.summary}</p>
+
+      <FeedbackSection
+        progressUpdateId={update.id}
+        feedback={
+          update.feedback
+            ? {
+                id: update.feedback.id,
+                content: update.feedback.content,
+                createdAt: update.feedback.createdAt.toISOString(),
+                updatedAt: update.feedback.updatedAt.toISOString(),
+                author: update.feedback.author,
+              }
+            : null
+        }
+        isAdmin={isAdmin}
+      />
     </li>
   )
 }

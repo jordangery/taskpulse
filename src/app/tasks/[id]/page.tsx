@@ -31,6 +31,15 @@ export default async function TaskDetailPage({ params }: PageProps) {
           status: true,
           createdAt: true,
           author: { select: { id: true, name: true } },
+          feedback: {
+            select: {
+              id: true,
+              content: true,
+              createdAt: true,
+              updatedAt: true,
+              author: { select: { id: true, name: true } },
+            },
+          },
         },
       },
     },
@@ -123,7 +132,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
           <h2 className="text-sm font-medium text-text-secondary">
             進度歷史（{task.updates.length} 筆，最新在最上面）
           </h2>
-          <ProgressUpdateList updates={task.updates} />
+          <ProgressUpdateList updates={task.updates} isAdmin={isAdmin} />
         </section>
       </div>
     </div>
