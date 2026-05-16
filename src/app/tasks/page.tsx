@@ -1,6 +1,8 @@
 import { formatDistanceToNow } from "date-fns"
 import { zhTW } from "date-fns/locale"
 import Link from "next/link"
+import { FeedbackSection } from "@/components/features/feedback-section"
+import { TaskQuickFeedback } from "@/components/features/task-quick-feedback"
 import { archiveTask, unarchiveTask } from "@/lib/actions/tasks"
 import { getCurrentUser } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
@@ -19,7 +21,21 @@ export default async function TasksPage() {
       updates: {
         take: 1,
         orderBy: { createdAt: "desc" },
-        select: { summary: true, status: true, createdAt: true },
+        select: {
+          id: true,
+          summary: true,
+          status: true,
+          createdAt: true,
+          feedback: {
+            select: {
+              id: true,
+              content: true,
+              createdAt: true,
+              updatedAt: true,
+              author: { select: { id: true, name: true } },
+            },
+          },
+        },
       },
     },
   })
@@ -83,6 +99,14 @@ export default async function TasksPage() {
   )
 }
 
+interface FeedbackOnLatest {
+  id: string
+  content: string
+  createdAt: Date
+  updatedAt: Date
+  author: { id: string; name: string }
+}
+
 interface TaskCardData {
   id: string
   title: string
@@ -90,7 +114,13 @@ interface TaskCardData {
   createdAt: Date
   archivedAt: Date | null
   assignee: { id: string; name: string; role: "admin" | "member" }
-  updates: Array<{ summary: string; status: string | null; createdAt: Date }>
+  updates: Array<{
+    id: string
+    summary: string
+    status: string | null
+    createdAt: Date
+    feedback: FeedbackOnLatest | null
+  }>
 }
 
 function TaskCard({
@@ -173,6 +203,28 @@ function TaskCard({
           </form>
         )}
       </div>
+
+      {/* 卡片底部：inline 快速回饋區（封存任務不顯示） */}
+      {!archived &&
+        (latest ? (
+          <FeedbackSection
+            progressUpdateId={latest.id}
+            feedback={
+              latest.feedback
+                ? {
+                    id: latest.feedback.id,
+                    content: latest.feedback.content,
+                    createdAt: latest.feedback.createdAt.toISOString(),
+                    updatedAt: latest.feedback.updatedAt.toISOString(),
+                    author: latest.feedback.author,
+                  }
+                : null
+            }
+            isAdmin={isAdmin}
+          />
+        ) : (
+          <TaskQuickFeedback taskId={task.id} isAdmin={isAdmin} />
+        ))}
     </article>
   )
 }
