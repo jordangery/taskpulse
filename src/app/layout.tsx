@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { AppHeader } from "@/components/app-header"
 import { ThemeProvider } from "@/components/theme-provider"
+import { fetchMyNotifications } from "@/lib/actions/notifications"
 import { getCurrentUser } from "@/lib/current-user"
 import "./globals.css"
 
@@ -13,8 +14,11 @@ export const metadata: Metadata = {
 const themeInitScript = `(function(){try{var t=localStorage.getItem("taskpulse-theme");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t)}}catch(e){}})();`
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  // Day 1：身分由 .env DEV_CURRENT_USER_ID 決定；沒設或設錯就 null，header 會顯示警告
+  // 身分：登入優先讀 NextAuth session，沒 session 走 DEV_CURRENT_USER_ID fallback
+  // 抓不到就 null，header 顯示「未設定身分」
   const user = await getCurrentUser().catch(() => null)
+  // 通知：登入後才抓；未登入回空殼避免在 /login 上炸 DB query
+  const notifications = user ? await fetchMyNotifications().catch(() => undefined) : undefined
 
   return (
     <html lang="zh-Hant-TW" className="h-full" suppressHydrationWarning>
@@ -24,7 +28,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       </head>
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
-          <AppHeader user={user ? { name: user.name, role: user.role } : null} />
+          <AppHeader
+            user={user ? { name: user.name, role: user.role } : null}
+            notifications={notifications}
+          />
           <main className="flex flex-1 flex-col">{children}</main>
         </ThemeProvider>
       </body>

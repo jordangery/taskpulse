@@ -3,13 +3,20 @@
 import Link from "next/link"
 import { signOut } from "next-auth/react"
 import { useState } from "react"
+import type { DueWarning, NotificationListItem } from "@/lib/actions/notifications"
+import { NotificationBell } from "./notification-bell"
 import { ThemeToggle } from "./theme-toggle"
 
 interface AppHeaderProps {
   user: { name: string; role: "admin" | "member" } | null
+  notifications?: {
+    unreadCount: number
+    recent: NotificationListItem[]
+    dueWarnings: DueWarning[]
+  }
 }
 
-export function AppHeader({ user }: AppHeaderProps) {
+export function AppHeader({ user, notifications }: AppHeaderProps) {
   return (
     <header className="flex items-center justify-between border-b border-border-subtle bg-surface px-6 py-3">
       <div className="flex items-center gap-6">
@@ -44,6 +51,13 @@ export function AppHeader({ user }: AppHeaderProps) {
             <span className="text-xs text-text-tertiary">
               {user.name}（{user.role === "admin" ? "主管" : "組員"}）
             </span>
+            {notifications && (
+              <NotificationBell
+                unreadCount={notifications.unreadCount}
+                recent={notifications.recent}
+                dueWarnings={notifications.dueWarnings}
+              />
+            )}
             <SignOutButton />
           </>
         ) : (

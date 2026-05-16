@@ -2,6 +2,7 @@
 
 import { Prisma } from "@prisma/client"
 import { revalidatePath } from "next/cache"
+import { createNotification } from "@/lib/actions/notifications"
 import { requireAdmin } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
 import { type TaskFormValues, taskFormSchema } from "@/lib/schemas/task"
@@ -26,6 +27,7 @@ export async function createTask(input: TaskFormValues): Promise<TaskActionResul
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? "驗證失敗" }
   }
+  let createdId: string
   try {
     const task = await prisma.task.create({
       data: {
@@ -33,22 +35,39 @@ export async function createTask(input: TaskFormValues): Promise<TaskActionResul
         creatorId: admin.id,
       },
     })
-    revalidatePath("/tasks")
-    return { success: true, data: { id: task.id } }
+    createdId = task.id
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
       return { success: false, error: "指派的成員不存在" }
     }
     throw e
   }
+  revalidatePath("/tasks")
+  // 通知被指派的 member（admin 自己指派自己不通知）
+  if (parsed.data.assigneeId !== admin.id) {
+    await createNotification({
+      recipientId: parsed.data.assigneeId,
+      type: "task_assigned",
+      taskId: createdId,
+      message: `${admin.name} 指派任務「${parsed.data.title}」給你`,
+      link: `/tasks/${createdId}`,
+    })
+  }
+  return { success: true, data: { id: createdId } }
 }
 
 export async function updateTask(id: string, input: TaskFormValues): Promise<TaskActionResult> {
-  await requireAdmin()
+  const admin = await requireAdmin()
   const parsed = taskFormSchema.safeParse(input)
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? "驗證失敗" }
   }
+  // 先抓舊 assigneeId，看 update 後有沒有換人
+  const prev = await prisma.task.findUnique({
+    where: { id },
+    select: { assigneeId: true },
+  })
+  if (!prev) return { success: false, error: "找不到該任務" }
   try {
     await prisma.task.update({
       where: { id },
@@ -64,6 +83,16 @@ export async function updateTask(id: string, input: TaskFormValues): Promise<Tas
   revalidatePath("/tasks")
   revalidatePath(`/tasks/${id}`)
   revalidatePath(`/tasks/${id}/edit`)
+  // assignee 換人才通知新 assignee
+  if (parsed.data.assigneeId !== prev.assigneeId && parsed.data.assigneeId !== admin.id) {
+    await createNotification({
+      recipientId: parsed.data.assigneeId,
+      type: "task_assigned",
+      taskId: id,
+      message: `${admin.name} 把任務「${parsed.data.title}」轉派給你`,
+      link: `/tasks/${id}`,
+    })
+  }
   return { success: true, data: { id } }
 }
 

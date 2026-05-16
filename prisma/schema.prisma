@@ -36,23 +36,25 @@ model User {
   createdTasks  Task[]           @relation("Creator")
   updates       ProgressUpdate[]
   feedbacks     Feedback[]
+  notifications Notification[]
 
   @@index([archivedAt])
 }
 
 model Task {
-  id          String           @id @default(cuid())
-  title       String
-  description String?
-  assigneeId  String
-  assignee    User             @relation("Assignee", fields: [assigneeId], references: [id])
-  creatorId   String
-  creator     User             @relation("Creator", fields: [creatorId], references: [id])
-  dueDate     DateTime?
-  createdAt   DateTime         @default(now())
-  archivedAt  DateTime?
+  id            String           @id @default(cuid())
+  title         String
+  description   String?
+  assigneeId    String
+  assignee      User             @relation("Assignee", fields: [assigneeId], references: [id])
+  creatorId     String
+  creator       User             @relation("Creator", fields: [creatorId], references: [id])
+  dueDate       DateTime?
+  createdAt     DateTime         @default(now())
+  archivedAt    DateTime?
 
-  updates     ProgressUpdate[]
+  updates       ProgressUpdate[]
+  notifications Notification[]
 
   @@index([assigneeId])
   @@index([archivedAt])
@@ -88,6 +90,26 @@ model Feedback {
   content          String
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
+}
+
+// App 內通知（4 種事件：task_assigned / feedback_received / progress_received / due_warning）
+// 收件人 = recipientId；message 在建立時 pre-render 成字串、link 是點下要跳的 URL
+// readAt = null 為未讀，計 badge 數靠這個欄位
+// type 用字串而非 enum，方便未來加類型不必 migration
+model Notification {
+  id          String    @id @default(cuid())
+  recipientId String
+  recipient   User      @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  type        String    // task_assigned | feedback_received | progress_received
+  taskId      String?
+  task        Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  message     String
+  link        String
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([recipientId, readAt])
+  @@index([createdAt])
 }
 
 // ----- NextAuth (Day 2) -----

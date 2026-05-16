@@ -1,6 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { createNotification } from "@/lib/actions/notifications"
 import { getCurrentUser } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
 import {
@@ -26,7 +27,7 @@ export async function createProgressUpdate(
   // 確認任務存在 + 角色權限：member 只能在自己被指派的任務寫；admin 任何任務都可寫（代寫）
   const task = await prisma.task.findUnique({
     where: { id: taskId },
-    select: { id: true, assigneeId: true, archivedAt: true },
+    select: { id: true, title: true, assigneeId: true, creatorId: true, archivedAt: true },
   })
   if (!task) return { success: false, error: "找不到該任務" }
   if (task.archivedAt) return { success: false, error: "任務已封存，無法新增進度" }
@@ -50,5 +51,18 @@ export async function createProgressUpdate(
 
   revalidatePath(`/tasks/${taskId}`)
   revalidatePath("/tasks")
+
+  // 通知任務建立者（admin）有新進度，但 admin 自己代寫自己 created 的任務不通知自己
+  if (task.creatorId !== me.id) {
+    const snippet =
+      parsed.data.summary.length > 30 ? `${parsed.data.summary.slice(0, 30)}…` : parsed.data.summary
+    await createNotification({
+      recipientId: task.creatorId,
+      type: "progress_received",
+      taskId,
+      message: `${me.name} 在「${task.title}」寫了新進度：${snippet}`,
+      link: `/tasks/${taskId}`,
+    })
+  }
   return { success: true, data: { id: created.id } }
 }
