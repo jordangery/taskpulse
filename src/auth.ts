@@ -23,7 +23,14 @@ declare module "next-auth/jwt" {
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   // Google 自動讀 AUTH_GOOGLE_ID / AUTH_GOOGLE_SECRET，無需顯式傳
-  providers: [Google],
+  // allowDangerousEmailAccountLinking：當 seeded user 已有 email、首次 Google 登入時自動 link
+  // （沒這個 flag 會回 OAuthAccountNotLinked 錯誤）
+  // dangerous 在於：若惡意 Google 帳號搶用同 email，可頂掉既有 user — 我們小團隊 admin 邀請流可接受
+  providers: [
+    Google({
+      allowDangerousEmailAccountLinking: true,
+    }),
+  ],
   // JWT strategy：session 存 cookie 不查 DB
   // → middleware (Edge runtime) 可直接 decode token 不需 Prisma
   session: { strategy: "jwt" },
