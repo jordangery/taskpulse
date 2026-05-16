@@ -1,6 +1,8 @@
 "use client"
 
+import { signOut } from "next-auth/react"
 import Link from "next/link"
+import { useState } from "react"
 import { ThemeToggle } from "./theme-toggle"
 
 interface AppHeaderProps {
@@ -35,14 +37,36 @@ export function AppHeader({ user }: AppHeaderProps) {
       </div>
       <div className="flex items-center gap-3">
         {user ? (
-          <span className="text-xs text-text-tertiary">
-            {user.name}（{user.role === "admin" ? "主管" : "組員"}）
-          </span>
+          <>
+            <span className="text-xs text-text-tertiary">
+              {user.name}（{user.role === "admin" ? "主管" : "組員"}）
+            </span>
+            <SignOutButton />
+          </>
         ) : (
           <span className="text-xs text-warning">未設定身分</span>
         )}
         <ThemeToggle />
       </div>
     </header>
+  )
+}
+
+function SignOutButton() {
+  const [pending, setPending] = useState(false)
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={async () => {
+        setPending(true)
+        // signOut 預設會把 cookie 清掉、redirect 到 callbackUrl
+        // callbackUrl 指 /api/auth/signin 讓使用者馬上換 user
+        await signOut({ callbackUrl: "/api/auth/signin" })
+      }}
+      className="rounded-md border border-border-subtle bg-canvas px-2 py-1 text-xs text-text-secondary hover:bg-subtle hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {pending ? "登出中…" : "登出"}
+    </button>
   )
 }
