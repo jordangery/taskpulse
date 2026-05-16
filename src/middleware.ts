@@ -1,5 +1,10 @@
+// Edge middleware — 只能 import auth.config（不含 Prisma adapter / fs）
+
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
+import NextAuth from "next-auth"
+import { authConfig } from "@/auth.config"
+
+const { auth } = NextAuth(authConfig)
 
 // admin-only 整段
 const ADMIN_PREFIXES = ["/members", "/reports"] as const

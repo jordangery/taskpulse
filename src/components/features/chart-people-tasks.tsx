@@ -50,7 +50,7 @@ export function ChartPeopleTasks({ data }: Props) {
               color: "var(--text-primary)",
               fontSize: "12px",
             }}
-            formatter={(value: number) => [`${value} 筆`, "任務"]}
+            formatter={(value) => [`${value ?? 0} 筆`, "任務"]}
           />
           <Bar dataKey="count" fill={colors[0] || "var(--chart-1)"} radius={[0, 4, 4, 0]} />
         </BarChart>

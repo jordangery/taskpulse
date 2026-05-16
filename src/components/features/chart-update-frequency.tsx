@@ -57,7 +57,7 @@ export function ChartUpdateFrequency({ data }: Props) {
               color: "var(--text-primary)",
               fontSize: "12px",
             }}
-            formatter={(value: number) => [`${value} 筆`, "進度"]}
+            formatter={(value) => [`${value ?? 0} 筆`, "進度"]}
           />
           <Line
             type="monotone"
