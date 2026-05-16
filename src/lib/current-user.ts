@@ -1,51 +1,47 @@
 // taskpulse - src/lib/current-user.ts
 //
-// Day 1：從 env 讀 hardcoded ID（方便快速切換身分測試）
-// Day 2：改成從 NextAuth session 讀
+// Day 2：優先讀 NextAuth session；DEV_CURRENT_USER_ID 保留為本地 dev fallback
+// （方便不開瀏覽器跑 inline tsx test，prod 上不會 set DEV_CURRENT_USER_ID 所以不會 fallback）
 //
 // 這個 abstraction 讓 Day 1 寫的所有 route / component 在 Day 2 不用改
 
+import { auth } from "@/auth"
 import { prisma } from "./db"
 
-// ----- Day 1 版本 -----
 export async function getCurrentUser() {
-  const id = process.env.DEV_CURRENT_USER_ID
-  if (!id) {
-    throw new Error("DEV_CURRENT_USER_ID not set in .env")
+  // 1. NextAuth session 為主
+  const session = await auth()
+  if (session?.user?.email) {
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    })
+    if (user) return user
+    // 有 session 但 DB 找不到（不該發生，session 跟 User 透過 PrismaAdapter 綁定）
+    throw new Error(`Session user not in DB: ${session.user.email}`)
   }
-  const user = await prisma.user.findUnique({ where: { id } })
-  if (!user) {
-    throw new Error(`DEV_CURRENT_USER_ID points to non-existent user: ${id}`)
+
+  // 2. 本地 dev fallback：DEV_CURRENT_USER_ID（curl / tsx smoke test 用）
+  const devId = process.env.DEV_CURRENT_USER_ID
+  if (devId) {
+    const user = await prisma.user.findUnique({ where: { id: devId } })
+    if (!user) {
+      throw new Error(`DEV_CURRENT_USER_ID points to non-existent user: ${devId}`)
+    }
+    return user
   }
-  return user
+
+  // 3. 都沒有：未登入
+  throw new Error("Unauthorized: no session and no DEV_CURRENT_USER_ID")
 }
-
-// ----- Day 2 版本（替換上面整個函數） -----
-//
-// import { auth } from "@/auth"
-//
-// export async function getCurrentUser() {
-//   const session = await auth()
-//   if (!session?.user?.email) return null
-//   return prisma.user.findUnique({
-//     where: { email: session.user.email },
-//   })
-// }
-
-// ----- helper -----
 
 export async function requireAdmin() {
   const user = await getCurrentUser()
-  if (!user || user.role !== "admin") {
+  if (user.role !== "admin") {
     throw new Error("Forbidden: admin only")
   }
   return user
 }
 
 export async function requireUser() {
-  const user = await getCurrentUser()
-  if (!user) {
-    throw new Error("Unauthorized")
-  }
-  return user
+  return getCurrentUser()
 }

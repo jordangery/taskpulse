@@ -13,9 +13,10 @@ async function main() {
   await prisma.user.deleteMany()
 
   // 1 個 admin（Jordan）+ 3 個 member
+  // admin email 設成 Jordan 真實 Gmail，讓 Google 登入時 PrismaAdapter 直接 link 上既有 row
   const admin = await prisma.user.create({
     data: {
-      email: "jordan@taskpulse.dev",
+      email: "mocha5011@gmail.com",
       name: "Jordan",
       role: "admin",
     },
