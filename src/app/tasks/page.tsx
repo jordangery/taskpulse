@@ -1,21 +1,56 @@
+import type { Prisma } from "@prisma/client"
 import { formatDistanceToNow } from "date-fns"
 import { zhTW } from "date-fns/locale"
 import Link from "next/link"
 import { FeedbackSection } from "@/components/features/feedback-section"
+import { type SortValue, TaskListFilters } from "@/components/features/task-list-filters"
 import { TaskQuickFeedback } from "@/components/features/task-quick-feedback"
 import { archiveTask, unarchiveTask } from "@/lib/actions/tasks"
 import { getCurrentUser } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
 
-export default async function TasksPage() {
+interface SearchParams {
+  q?: string
+  assignee?: string
+  status?: string
+  overdue?: string
+  sort?: SortValue
+}
+
+interface PageProps {
+  searchParams: Promise<SearchParams>
+}
+
+export default async function TasksPage({ searchParams }: PageProps) {
   const me = await getCurrentUser()
   const isAdmin = me.role === "admin"
+  const params = await searchParams
+  const q = params.q?.trim() || ""
+  const assigneeFilter = params.assignee?.trim() || ""
+  const statusFilter = params.status?.trim() || ""
+  const overdueOnly = params.overdue === "1"
+  const sort = (params.sort ?? "created") as SortValue
 
   // 角色切換：admin 看全部、member 只看自己被指派的（未封存）
-  const baseWhere = isAdmin ? {} : { assigneeId: me.id }
+  const baseWhere: Prisma.TaskWhereInput = isAdmin ? {} : { assigneeId: me.id }
+  // 搜尋：標題 + 描述
+  if (q) {
+    baseWhere.OR = [{ title: { contains: q } }, { description: { contains: q } }]
+  }
+  // assignee 過濾（admin only — member 已被 baseWhere 鎖死自己）
+  if (isAdmin && assigneeFilter) baseWhere.assigneeId = assigneeFilter
+  // 逾期過濾
+  if (overdueOnly) {
+    baseWhere.dueDate = { lt: new Date(), not: null }
+  }
+
+  // 排序：created (default desc) / due (asc, nulls last) / activity (JS 端排，需 query 完再算)
+  const orderBy: Prisma.TaskOrderByWithRelationInput =
+    sort === "due" ? { dueDate: { sort: "asc", nulls: "last" } } : { createdAt: "desc" }
+
   const active = await prisma.task.findMany({
     where: { ...baseWhere, archivedAt: null },
-    orderBy: { createdAt: "desc" },
+    orderBy,
     include: {
       assignee: { select: { id: true, name: true, role: true } },
       updates: {
@@ -45,13 +80,39 @@ export default async function TasksPage() {
   })
   const archived = isAdmin
     ? await prisma.task.findMany({
-        where: { ...baseWhere, archivedAt: { not: null } },
+        // 已封存區塊不套 search/filter（讓使用者方便看完整封存）
+        where: { archivedAt: { not: null } },
         orderBy: { archivedAt: "desc" },
         include: {
           assignee: { select: { id: true, name: true, role: true } },
         },
       })
     : []
+
+  // 後處理：status filter 跟 activity sort 都靠最新 update，SQL 表達麻煩，在 JS 端做
+  const filteredActive = statusFilter
+    ? active.filter((t) => t.updates[0]?.status === statusFilter)
+    : active
+
+  const sortedActive =
+    sort === "activity"
+      ? [...filteredActive].sort((a, b) => {
+          const aTime = a.updates[0]?.createdAt.getTime() ?? a.createdAt.getTime()
+          const bTime = b.updates[0]?.createdAt.getTime() ?? b.createdAt.getTime()
+          return bTime - aTime
+        })
+      : filteredActive
+
+  // admin 看到全成員下拉；未封存的成員才放
+  const assignees = isAdmin
+    ? await prisma.user.findMany({
+        where: { archivedAt: null },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      })
+    : undefined
+
+  const hasFilters = !!(q || assigneeFilter || statusFilter || overdueOnly || sort !== "created")
 
   return (
     <div className="flex flex-1 flex-col px-6 py-6">
@@ -60,9 +121,11 @@ export default async function TasksPage() {
           <div>
             <h1 className="text-2xl font-semibold text-text-primary">任務</h1>
             <p className="mt-1 text-sm text-text-secondary">
-              {isAdmin
-                ? `全隊現役任務 ${active.length} 筆${archived.length > 0 ? ` + ${archived.length} 筆已封存` : ""}`
-                : `指派給你的任務 ${active.length} 筆`}
+              {hasFilters
+                ? `符合篩選條件 ${sortedActive.length} 筆`
+                : isAdmin
+                  ? `全隊現役任務 ${active.length} 筆${archived.length > 0 ? ` + ${archived.length} 筆已封存` : ""}`
+                  : `指派給你的任務 ${active.length} 筆`}
             </p>
           </div>
           {isAdmin && (
@@ -75,11 +138,17 @@ export default async function TasksPage() {
           )}
         </header>
 
-        {active.length === 0 ? (
-          <EmptyState isAdmin={isAdmin} />
+        <TaskListFilters assignees={assignees} />
+
+        {sortedActive.length === 0 ? (
+          hasFilters ? (
+            <FilteredEmpty />
+          ) : (
+            <EmptyState isAdmin={isAdmin} />
+          )
         ) : (
           <section className="space-y-3">
-            {active.map((task) => (
+            {sortedActive.map((task) => (
               <TaskCard
                 key={task.id}
                 task={task}
@@ -268,6 +337,15 @@ function StatusBadge({ status }: { status: string }) {
       ? "bg-warning-subtle text-warning"
       : "bg-info-subtle text-info"
   return <span className={`rounded-full ${tone} px-2 py-0.5 text-xs`}>{status}</span>
+}
+
+function FilteredEmpty() {
+  return (
+    <div className="rounded-md border border-dashed border-border-default bg-surface px-6 py-12 text-center">
+      <p className="text-sm text-text-secondary">沒有符合條件的任務。</p>
+      <p className="mt-1 text-xs text-text-tertiary">改一下篩選條件或點「清除全部」看完整列表。</p>
+    </div>
+  )
 }
 
 function EmptyState({ isAdmin }: { isAdmin: boolean }) {
