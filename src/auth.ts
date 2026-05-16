@@ -46,10 +46,33 @@ const devProviders =
       ]
     : []
 
+// 包一層 Edge-safe jwt callback：第一次登入時 events.createUser 才剛把 role promote 為 admin（DB），
+// 但傳進來的 user object 是 promote 之前的 snapshot（role="member"），會讓首次 session role 不對。
+// 解法：在 Node-only auth.ts 這裡覆寫 jwt callback，user 出現時 (= 首次登入) 額外 prisma 查一次 fresh role。
+// middleware 仍然走 auth.config.ts 的純 token 邏輯、零 DB 查詢，保持 Edge 安全。
+const baseJwt = authConfig.callbacks?.jwt
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   adapter: PrismaAdapter(prisma),
   providers: [...authConfig.providers, ...devProviders],
+  callbacks: {
+    ...authConfig.callbacks,
+    async jwt(args) {
+      // 先跑 base jwt callback（會把 userId + role 從 user object 寫進 token）
+      const token = baseJwt ? await baseJwt(args) : args.token
+      if (!token) return args.token
+      // 首次登入 (args.user 存在) 時補查 DB role，避免 events.createUser 跟 jwt 的競態
+      if (args.user && token.userId) {
+        const fresh = await prisma.user.findUnique({
+          where: { id: token.userId },
+          select: { role: true },
+        })
+        if (fresh) token.role = fresh.role
+      }
+      return token
+    },
+  },
   events: {
     async createUser({ user }) {
       // 第一個登入的人自動成為 admin（spec features.md ## 7 line 162）

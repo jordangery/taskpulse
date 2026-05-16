@@ -25,16 +25,25 @@ export default auth((req) => {
   const { pathname, search } = req.nextUrl
   const isAuthed = !!req.auth
   const isAdmin = req.auth?.user?.role === "admin"
+  // /api/* (除了 /api/auth/* 已被 matcher 排除) 走 JSON 回應，方便 API client 使用
+  const isApi = pathname.startsWith("/api/")
 
-  // 沒登入：踢到自訂登入頁，帶 callbackUrl 回原本要去的頁
+  // 沒登入
   if (!isAuthed) {
+    if (isApi) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+    // 頁面：踢到自訂登入頁，帶 callbackUrl 回原本要去的頁
     const signinUrl = new URL("/login", req.url)
     signinUrl.searchParams.set("callbackUrl", `${pathname}${search}`)
     return NextResponse.redirect(signinUrl)
   }
 
-  // 已登入但不是 admin、卻訪問 admin-only 路由：踢回首頁
+  // 已登入但不是 admin、卻訪問 admin-only 路由
   if (isAdminOnly(pathname) && !isAdmin) {
+    if (isApi) {
+      return NextResponse.json({ error: "Forbidden: admin only" }, { status: 403 })
+    }
     return NextResponse.redirect(new URL("/", req.url))
   }
 
