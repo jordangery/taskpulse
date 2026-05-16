@@ -30,6 +30,10 @@ export const authConfig = {
   ],
   // JWT 策略：session 存 cookie，middleware 不必查 DB
   session: { strategy: "jwt" },
+  // 自訂登入頁取代 NextAuth 預設 UI（預設 Credentials form 缺 callbackUrl，登入後會卡在 signin）
+  pages: {
+    signIn: "/login",
+  },
   callbacks: {
     async jwt({ token, user, trigger, session }) {
       // 首次登入：user 是 PrismaAdapter 剛建的 row，把 id + role 烙進 token

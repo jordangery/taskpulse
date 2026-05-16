@@ -26,9 +26,9 @@ export default auth((req) => {
   const isAuthed = !!req.auth
   const isAdmin = req.auth?.user?.role === "admin"
 
-  // 沒登入：踢到 Google 登入，帶 callbackUrl 回原本要去的頁
+  // 沒登入：踢到自訂登入頁，帶 callbackUrl 回原本要去的頁
   if (!isAuthed) {
-    const signinUrl = new URL("/api/auth/signin", req.url)
+    const signinUrl = new URL("/login", req.url)
     signinUrl.searchParams.set("callbackUrl", `${pathname}${search}`)
     return NextResponse.redirect(signinUrl)
   }
@@ -42,6 +42,7 @@ export default auth((req) => {
 })
 
 export const config = {
-  // 排除 Next 內部 assets + favicon + NextAuth 自家路由（/api/auth/* 必須讓 NextAuth 自己處理）
-  matcher: ["/((?!_next/static|_next/image|favicon\\.ico|api/auth).*)"],
+  // 排除 Next 內部 assets + favicon + NextAuth 自家路由 + 自訂登入頁本身
+  // /login 必須公開（middleware redirect 目標就是它，不能再被擋回去 → infinite loop）
+  matcher: ["/((?!_next/static|_next/image|favicon\\.ico|api/auth|login).*)"],
 }
