@@ -1,26 +1,204 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* =====================================================
+ * Design Tokens - Light (預設)
+ * ===================================================== */
+:root,
+[data-theme="light"] {
+  --bg-canvas:        #f5f1e8;
+  --bg-surface:       #fbf8f1;
+  --bg-elevated:      #ffffff;
+  --bg-subtle:        #ede7d8;
+
+  --text-primary:     #2d2926;
+  --text-secondary:   #6b6358;
+  --text-tertiary:    #9b9388;
+  --text-inverse:     #fbf8f1;
+
+  --border-subtle:    #e0d8c5;
+  --border-default:   #c9bfa8;
+  --border-strong:    #8a7f6a;
+
+  --primary:          #6b7d4f;
+  --primary-hover:    #5a6b41;
+  --primary-subtle:   #e3e6d4;
+  --primary-text:     #fbf8f1;
+
+  --accent:           #4a5d7e;
+  --accent-hover:     #3d4f6b;
+  --accent-subtle:    #d8dfe8;
+
+  --success:          #5c8a4e;
+  --success-subtle:   #dfe9d4;
+  --warning:          #b88a3e;
+  --warning-subtle:   #f0e3c8;
+  --danger:           #a85a4a;
+  --danger-subtle:    #f0d8d2;
+  --info:             #4a7088;
+  --info-subtle:      #d8e3ea;
+
+  --chart-1: #6b7d4f;
+  --chart-2: #4a5d7e;
+  --chart-3: #b88a3e;
+  --chart-4: #a85a4a;
+  --chart-5: #7a6b8e;
+
+  --focus-ring:       #4a5d7e;
+  --shadow-sm: 0 1px 2px 0 rgb(75 55 35 / 0.05);
+  --shadow-md: 0 4px 8px -2px rgb(75 55 35 / 0.08), 0 2px 4px -2px rgb(75 55 35 / 0.04);
+  --shadow-lg: 0 12px 24px -6px rgb(75 55 35 / 0.10), 0 4px 8px -4px rgb(75 55 35 / 0.06);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* =====================================================
+ * Design Tokens - Dark
+ * ===================================================== */
+[data-theme="dark"] {
+  --bg-canvas:        #1c1f26;
+  --bg-surface:       #252932;
+  --bg-elevated:      #2f343e;
+  --bg-subtle:        #21252d;
+
+  --text-primary:     #e8e3d8;
+  --text-secondary:   #b0a89a;
+  --text-tertiary:    #7a7468;
+  --text-inverse:     #2d2926;
+
+  --border-subtle:    #353a44;
+  --border-default:   #484e5a;
+  --border-strong:    #6e7585;
+
+  --primary:          #8a9d6a;
+  --primary-hover:    #9aad7a;
+  --primary-subtle:   #2e3528;
+  --primary-text:     #1c1f26;
+
+  --accent:           #7a91b8;
+  --accent-hover:     #8aa1c8;
+  --accent-subtle:    #2a3140;
+
+  --success:          #7ba868;
+  --success-subtle:   #2a3525;
+  --warning:          #d4a574;
+  --warning-subtle:   #3a3025;
+  --danger:           #c87a6a;
+  --danger-subtle:    #3a2825;
+  --info:             #6a91a8;
+  --info-subtle:      #25323a;
+
+  --chart-1: #8a9d6a;
+  --chart-2: #7a91b8;
+  --chart-3: #d4a574;
+  --chart-4: #c87a6a;
+  --chart-5: #a094b8;
+
+  --focus-ring:       #7a91b8;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.30);
+  --shadow-md: 0 4px 8px -2px rgb(0 0 0 / 0.40), 0 2px 4px -2px rgb(0 0 0 / 0.20);
+  --shadow-lg: 0 12px 24px -6px rgb(0 0 0 / 0.50), 0 4px 8px -4px rgb(0 0 0 / 0.30);
 }
 
+/* 跟隨系統：當沒有 data-theme attribute 且系統為 dark */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  :root:not([data-theme]) {
+    --bg-canvas:        #1c1f26;
+    --bg-surface:       #252932;
+    --bg-elevated:      #2f343e;
+    --bg-subtle:        #21252d;
+    --text-primary:     #e8e3d8;
+    --text-secondary:   #b0a89a;
+    --text-tertiary:    #7a7468;
+    --text-inverse:     #2d2926;
+    --border-subtle:    #353a44;
+    --border-default:   #484e5a;
+    --border-strong:    #6e7585;
+    --primary:          #8a9d6a;
+    --primary-hover:    #9aad7a;
+    --primary-subtle:   #2e3528;
+    --primary-text:     #1c1f26;
+    --accent:           #7a91b8;
+    --accent-hover:     #8aa1c8;
+    --accent-subtle:    #2a3140;
+    --success:          #7ba868;
+    --success-subtle:   #2a3525;
+    --warning:          #d4a574;
+    --warning-subtle:   #3a3025;
+    --danger:           #c87a6a;
+    --danger-subtle:    #3a2825;
+    --info:             #6a91a8;
+    --info-subtle:      #25323a;
+    --chart-1: #8a9d6a;
+    --chart-2: #7a91b8;
+    --chart-3: #d4a574;
+    --chart-4: #c87a6a;
+    --chart-5: #a094b8;
+    --focus-ring:       #7a91b8;
   }
 }
 
+/* =====================================================
+ * Tailwind v4 - 把 token 註冊為 utility class
+ * ===================================================== */
+@theme {
+  --color-canvas: var(--bg-canvas);
+  --color-surface: var(--bg-surface);
+  --color-elevated: var(--bg-elevated);
+  --color-subtle: var(--bg-subtle);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-inverse: var(--text-inverse);
+
+  --color-border-subtle: var(--border-subtle);
+  --color-border-default: var(--border-default);
+  --color-border-strong: var(--border-strong);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-subtle: var(--primary-subtle);
+  --color-primary-text: var(--primary-text);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-subtle: var(--accent-subtle);
+
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-info: var(--info);
+  --color-info-subtle: var(--info-subtle);
+}
+
+/* =====================================================
+ * Global styles
+ * ===================================================== */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* 主題切換時的過渡（但僅限背景與邊框，文字不過渡避免閃爍） */
+*,
+*::before,
+*::after {
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+/* Focus visible 用 token */
+*:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
