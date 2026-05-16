@@ -1,0 +1,116 @@
+// taskpulse - prisma/schema.prisma
+// Day 1：所有 model 都會用到，但 Account / Session 在 Day 2 NextAuth 才會運作
+// 為了避免 Day 2 再做一次 migration，Day 1 直接全部 schema 都建好
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  member
+}
+
+model User {
+  id            String           @id @default(cuid())
+  email         String           @unique
+  name          String
+  role          Role             @default(member)
+  createdAt     DateTime         @default(now())
+
+  // Day 2 NextAuth
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+
+  // 關聯
+  assignedTasks Task[]           @relation("Assignee")
+  createdTasks  Task[]           @relation("Creator")
+  updates       ProgressUpdate[]
+  feedbacks     Feedback[]
+}
+
+model Task {
+  id          String           @id @default(cuid())
+  title       String
+  description String?
+  assigneeId  String
+  assignee    User             @relation("Assignee", fields: [assigneeId], references: [id])
+  creatorId   String
+  creator     User             @relation("Creator", fields: [creatorId], references: [id])
+  dueDate     DateTime?
+  createdAt   DateTime         @default(now())
+  archivedAt  DateTime?
+
+  updates     ProgressUpdate[]
+
+  @@index([assigneeId])
+  @@index([archivedAt])
+}
+
+// 進度摘要：append-only 歷史紀錄
+// 任務「最新狀態」= 最新一筆 ProgressUpdate（依 createdAt desc）
+model ProgressUpdate {
+  id         String   @id @default(cuid())
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id])
+  summary    String
+  percentage Int?
+  status     String?
+  createdAt  DateTime @default(now())
+
+  feedback   Feedback?
+
+  @@index([taskId, createdAt])
+  @@index([authorId])
+}
+
+// 主管回饋：1對1 強制（每筆進度最多一條回饋）
+// 回饋允許編輯，updatedAt 自動更新
+model Feedback {
+  id               String         @id @default(cuid())
+  progressUpdateId String         @unique
+  progressUpdate   ProgressUpdate @relation(fields: [progressUpdateId], references: [id], onDelete: Cascade)
+  authorId         String
+  author           User           @relation(fields: [authorId], references: [id])
+  content          String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+// ----- NextAuth (Day 2) -----
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
