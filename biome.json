@@ -9,13 +9,15 @@
     "ignoreUnknown": false,
     "includes": [
       "**",
-      "!**/node_modules/**",
-      "!**/.next/**",
-      "!**/coverage/**",
-      "!**/build/**",
-      "!**/out/**",
-      "!**/dist/**",
-      "!**/*.min.js"
+      "!**/node_modules",
+      "!**/.next",
+      "!**/coverage",
+      "!**/build",
+      "!**/out",
+      "!**/dist",
+      "!**/*.min.js",
+      "!src/app/globals.css",
+      "!tsconfig.json"
     ]
   },
   "formatter": {
