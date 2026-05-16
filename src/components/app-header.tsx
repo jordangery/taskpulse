@@ -63,9 +63,8 @@ function SignOutButton() {
       disabled={pending}
       onClick={async () => {
         setPending(true)
-        // signOut 預設會把 cookie 清掉、redirect 到 callbackUrl
-        // callbackUrl 指 /api/auth/signin 讓使用者馬上換 user
-        await signOut({ callbackUrl: "/api/auth/signin" })
+        // signOut 清 cookie 後跳自訂 /login 頁（NextAuth 內建 /api/auth/signin 表單壞掉、避免）
+        await signOut({ callbackUrl: "/login" })
       }}
       className="rounded-md border border-border-subtle bg-canvas px-2 py-1 text-xs text-text-secondary hover:bg-subtle hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
     >
