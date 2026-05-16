@@ -2,6 +2,9 @@ import { formatDistanceToNow } from "date-fns"
 import { zhTW } from "date-fns/locale"
 import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
+import { ProgressUpdateForm } from "@/components/features/progress-update-form"
+import { ProgressUpdateList } from "@/components/features/progress-update-list"
+import { createProgressUpdate } from "@/lib/actions/progress-updates"
 import { archiveTask, unarchiveTask } from "@/lib/actions/tasks"
 import { getCurrentUser } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
@@ -19,6 +22,17 @@ export default async function TaskDetailPage({ params }: PageProps) {
     include: {
       assignee: { select: { id: true, name: true, role: true } },
       creator: { select: { id: true, name: true } },
+      updates: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          summary: true,
+          percentage: true,
+          status: true,
+          createdAt: true,
+          author: { select: { id: true, name: true } },
+        },
+      },
     },
   })
   if (!task) notFound()
@@ -28,6 +42,9 @@ export default async function TaskDetailPage({ params }: PageProps) {
 
   const isAdmin = me.role === "admin"
   const isArchived = task.archivedAt !== null
+  // 任何能看到此頁的人都能寫進度（member 限自己的、admin 任何）；封存任務除外
+  const canWriteUpdate = !isArchived
+  const lastMineAt = task.updates.find((u) => u.author.id === me.id)?.createdAt ?? null
 
   return (
     <div className="flex flex-1 flex-col px-6 py-6">
@@ -94,9 +111,19 @@ export default async function TaskDetailPage({ params }: PageProps) {
           )}
         </section>
 
-        <section className="rounded-md border border-dashed border-border-default bg-surface px-5 py-8 text-center">
-          <p className="text-sm text-text-secondary">進度摘要 + 主管回饋區塊</p>
-          <p className="mt-1 text-xs text-text-tertiary">Step 6 / 7 會把這塊填上</p>
+        {canWriteUpdate && (
+          <ProgressUpdateForm
+            taskId={task.id}
+            action={createProgressUpdate}
+            lastMineAt={lastMineAt ? lastMineAt.toISOString() : null}
+          />
+        )}
+
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-text-secondary">
+            進度歷史（{task.updates.length} 筆，最新在最上面）
+          </h2>
+          <ProgressUpdateList updates={task.updates} />
         </section>
       </div>
     </div>
