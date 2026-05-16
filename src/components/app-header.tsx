@@ -22,9 +22,14 @@ export function AppHeader({ user }: AppHeaderProps) {
             任務
           </Link>
           {user?.role === "admin" && (
-            <Link href="/members" className="text-text-secondary hover:text-text-primary">
-              成員
-            </Link>
+            <>
+              <Link href="/members" className="text-text-secondary hover:text-text-primary">
+                成員
+              </Link>
+              <Link href="/reports" className="text-text-secondary hover:text-text-primary">
+                回報
+              </Link>
+            </>
           )}
         </nav>
       </div>
