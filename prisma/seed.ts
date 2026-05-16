@@ -6,11 +6,14 @@ import { PrismaClient } from "@prisma/client"
 const prisma = new PrismaClient()
 
 async function main() {
-  // 清空（dev only）— 注意刪除順序：先子表後父表
-  await prisma.feedback.deleteMany()
-  await prisma.progressUpdate.deleteMany()
-  await prisma.task.deleteMany()
-  await prisma.user.deleteMany()
+  // Idempotent guard：如果已經有 seeded 過（找得到 Jordan），直接跳出、不重 seed
+  // 避免每次 npm run build 都把使用者真實寫的 task/update/feedback 洗掉
+  // 要強制重 seed 改用：npx prisma migrate reset
+  const existing = await prisma.user.findFirst({ where: { name: "Jordan" } })
+  if (existing) {
+    console.log("✓ Seed skipped — Jordan already exists (use `prisma migrate reset` to wipe)")
+    return
+  }
 
   // 1 個 admin（Jordan）+ 3 個 member
   // admin email 設成 Jordan 真實登入用的 Google 帳號，讓 PrismaAdapter 直接 link 上既有 row
