@@ -46,7 +46,6 @@ next-env.d.ts
 # prisma (Day 1 step 3 onwards)
 prisma/dev.db
 prisma/dev.db-journal
-prisma/migrations/dev/
 
 # Claude Code / agent state
 .claude/
