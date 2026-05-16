@@ -23,6 +23,7 @@ model User {
   name          String
   role          Role             @default(member)
   createdAt     DateTime         @default(now())
+  archivedAt    DateTime?        // 軟刪除：避免任務 assignee 變成孤兒
 
   // Day 2 NextAuth
   emailVerified DateTime?
@@ -35,6 +36,8 @@ model User {
   createdTasks  Task[]           @relation("Creator")
   updates       ProgressUpdate[]
   feedbacks     Feedback[]
+
+  @@index([archivedAt])
 }
 
 model Task {
