@@ -13,19 +13,39 @@ declare module "next-auth" {
   }
 }
 
+declare module "next-auth/jwt" {
+  interface JWT {
+    userId?: string
+    role?: "admin" | "member"
+  }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   // Google 自動讀 AUTH_GOOGLE_ID / AUTH_GOOGLE_SECRET，無需顯式傳
   providers: [Google],
-  // database strategy 才能搭 Prisma adapter（user.id 從 DB 拿）
-  session: { strategy: "database" },
+  // JWT strategy：session 存 cookie 不查 DB
+  // → middleware (Edge runtime) 可直接 decode token 不需 Prisma
+  session: { strategy: "jwt" },
   callbacks: {
-    async session({ session, user }) {
-      // 把 DB User row 的 id 跟 role 灌進 session.user
-      if (session.user) {
-        session.user.id = user.id
-        // user 是 PrismaAdapter 從 User 表拿的，已含 role
-        session.user.role = (user as { role: "admin" | "member" }).role
+    async jwt({ token, user, trigger, session }) {
+      // 首次登入：user 是剛建好的 DB row，把 id + role 烙進 token
+      if (user) {
+        token.userId = user.id
+        token.role = (user as { role: "admin" | "member" }).role
+      }
+      // 之後 admin 改成 member（或反過來）時，前端可呼叫 updateSession({ role }) 觸發 trigger=update
+      if (trigger === "update" && session?.user?.role) {
+        token.role = session.user.role as "admin" | "member"
+      }
+      return token
+    },
+    async session({ session, token }) {
+      if (session.user && token.userId) {
+        session.user.id = token.userId
+      }
+      if (session.user && token.role) {
+        session.user.role = token.role
       }
       return session
     },
