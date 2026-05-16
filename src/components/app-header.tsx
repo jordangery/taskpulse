@@ -18,9 +18,14 @@ export function AppHeader({ user }: AppHeaderProps) {
           Taskpulse
         </Link>
         <nav className="flex items-center gap-4 text-sm">
-          <Link href="/members" className="text-text-secondary hover:text-text-primary">
-            成員
+          <Link href="/tasks" className="text-text-secondary hover:text-text-primary">
+            任務
           </Link>
+          {user?.role === "admin" && (
+            <Link href="/members" className="text-text-secondary hover:text-text-primary">
+              成員
+            </Link>
+          )}
         </nav>
       </div>
       <div className="flex items-center gap-3">
