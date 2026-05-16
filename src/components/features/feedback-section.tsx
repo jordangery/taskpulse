@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { formatDistanceToNow } from "date-fns"
 import { zhTW } from "date-fns/locale"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { useForm } from "react-hook-form"
@@ -22,6 +23,8 @@ interface FeedbackSectionProps {
   feedbacks: FeedbackThreadItem[]
   currentUserId: string | null
   canReply: boolean
+  // 任務列表只取最新 N 則顯示，更早的縮成提示 + 跳詳情頁
+  truncated?: { hiddenOlderCount: number; detailLink: string }
 }
 
 // 回饋從 1對1 改成留言串：任何相關人員都能回應、各自能編輯自己的
@@ -30,12 +33,21 @@ export function FeedbackSection({
   feedbacks,
   currentUserId,
   canReply,
+  truncated,
 }: FeedbackSectionProps) {
   // 不顯示條件：沒留言 + 不能回應
   if (feedbacks.length === 0 && !canReply) return null
 
   return (
     <section className="mt-3 space-y-2">
+      {truncated && truncated.hiddenOlderCount > 0 && (
+        <Link
+          href={truncated.detailLink}
+          className="block text-xs text-text-tertiary hover:text-accent"
+        >
+          ⋯ 還有 {truncated.hiddenOlderCount} 則更早的留言，去詳情頁看完整對話 →
+        </Link>
+      )}
       {feedbacks.length > 0 && (
         <ul className="space-y-2">
           {feedbacks.map((fb) => (

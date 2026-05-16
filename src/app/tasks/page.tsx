@@ -26,8 +26,11 @@ export default async function TasksPage() {
           summary: true,
           status: true,
           createdAt: true,
+          _count: { select: { feedbacks: true } },
+          // 列表只取最新 3 則（desc 取後再 reverse 成 asc 顯示）；完整 thread 去詳情頁
           feedbacks: {
-            orderBy: { createdAt: "asc" },
+            orderBy: { createdAt: "desc" },
+            take: 3,
             select: {
               id: true,
               content: true,
@@ -129,7 +132,8 @@ interface TaskCardData {
     summary: string
     status: string | null
     createdAt: Date
-    feedbacks: FeedbackOnLatest[]
+    feedbacks: FeedbackOnLatest[] // 最多 3 筆（desc 取，UI 端 reverse 成 asc）
+    _count: { feedbacks: number }
   }>
 }
 
@@ -178,8 +182,8 @@ function TaskCard({
             ) : (
               <span>尚無進度</span>
             )}
-            {latest && latest.feedbacks.length > 0 && (
-              <span className="text-accent">💬 {latest.feedbacks.length} 則回應</span>
+            {latest && latest._count.feedbacks > 0 && (
+              <span className="text-accent">💬 {latest._count.feedbacks} 則回應</span>
             )}
           </div>
 
@@ -225,18 +229,31 @@ function TaskCard({
       {/* 卡片底部：留言串（封存任務不顯示） */}
       {!archived &&
         (latest ? (
-          <FeedbackSection
-            progressUpdateId={latest.id}
-            feedbacks={latest.feedbacks.map((f) => ({
-              id: f.id,
-              content: f.content,
-              createdAt: f.createdAt.toISOString(),
-              updatedAt: f.updatedAt.toISOString(),
-              author: f.author,
-            }))}
-            currentUserId={currentUserId}
-            canReply={canReplyOnTask}
-          />
+          (() => {
+            // query 是 desc + take 3，UI 顯示要 asc（舊在上、新在下）
+            const visibleAsc = [...latest.feedbacks].reverse()
+            const total = latest._count.feedbacks
+            const hiddenOlder = Math.max(0, total - visibleAsc.length)
+            return (
+              <FeedbackSection
+                progressUpdateId={latest.id}
+                feedbacks={visibleAsc.map((f) => ({
+                  id: f.id,
+                  content: f.content,
+                  createdAt: f.createdAt.toISOString(),
+                  updatedAt: f.updatedAt.toISOString(),
+                  author: f.author,
+                }))}
+                currentUserId={currentUserId}
+                canReply={canReplyOnTask}
+                truncated={
+                  hiddenOlder > 0
+                    ? { hiddenOlderCount: hiddenOlder, detailLink: `/tasks/${task.id}` }
+                    : undefined
+                }
+              />
+            )
+          })()
         ) : (
           <TaskQuickFeedback taskId={task.id} isAdmin={isAdmin} />
         ))}
