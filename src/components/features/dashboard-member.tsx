@@ -20,11 +20,15 @@ export async function DashboardMember({ user }: Props) {
         },
       },
     }),
-    // 3 筆最近收到的回饋（針對你寫的進度）
+    // 3 筆最近「別人寫給你」的回應
+    // 範圍：你被指派的 task 上的任何 progress（不只你自己寫的），任何別人留的回應
     prisma.feedback.findMany({
       take: 3,
       orderBy: { updatedAt: "desc" },
-      where: { progressUpdate: { authorId: user.id } },
+      where: {
+        authorId: { not: user.id },
+        progressUpdate: { task: { assigneeId: user.id } },
+      },
       select: {
         id: true,
         content: true,
@@ -48,7 +52,7 @@ export async function DashboardMember({ user }: Props) {
         <header>
           <h1 className="text-2xl font-semibold text-text-primary">嗨 {user.name}</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            指派給你的 {tasks.length} 筆任務｜收到 {latestFeedbacks.length} 筆主管回饋
+            指派給你的 {tasks.length} 筆任務｜最近收到 {latestFeedbacks.length} 筆回應
           </p>
         </header>
 
@@ -92,10 +96,10 @@ export async function DashboardMember({ user }: Props) {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-medium text-text-secondary">主管最新回饋</h2>
+          <h2 className="text-sm font-medium text-text-secondary">最近收到的回應</h2>
           {latestFeedbacks.length === 0 ? (
             <div className="rounded-md border border-dashed border-border-default bg-surface px-6 py-8 text-center text-sm text-text-tertiary">
-              還沒收到主管回饋。
+              還沒收到回應。
             </div>
           ) : (
             <ul className="space-y-2">

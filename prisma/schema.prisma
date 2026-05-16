@@ -73,23 +73,27 @@ model ProgressUpdate {
   status     String?
   createdAt  DateTime @default(now())
 
-  feedback   Feedback?
+  feedbacks  Feedback[]
 
   @@index([taskId, createdAt])
   @@index([authorId])
 }
 
-// 主管回饋：1對1 強制（每筆進度最多一條回饋）
-// 回饋允許編輯，updatedAt 自動更新
+// 回饋 / 留言（已從 1對1 改為多對一，使用者要求改成留言板）
+// 每筆 ProgressUpdate 可掛多個 Feedback，author 可以是 admin 或 member
+// 編輯權限：只有該則 author 能改自己的，updatedAt 自動更新
+// （spec 原本說「❌ 組員回應主管的回饋」「✅ 一筆 ProgressUpdate 最多一條 Feedback」都已推翻）
 model Feedback {
   id               String         @id @default(cuid())
-  progressUpdateId String         @unique
+  progressUpdateId String
   progressUpdate   ProgressUpdate @relation(fields: [progressUpdateId], references: [id], onDelete: Cascade)
   authorId         String
   author           User           @relation(fields: [authorId], references: [id])
   content          String
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
+
+  @@index([progressUpdateId, createdAt])
 }
 
 // App 內通知（4 種事件：task_assigned / feedback_received / progress_received / due_warning）

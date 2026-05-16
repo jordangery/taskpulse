@@ -66,7 +66,7 @@ async function fetchRecentUpdates() {
       createdAt: true,
       task: { select: { id: true, title: true } },
       author: { select: { id: true, name: true } },
-      feedback: { select: { id: true } },
+      feedbacks: { select: { id: true }, take: 1 },
     },
   })
 }
@@ -75,7 +75,7 @@ export async function DashboardAdmin() {
   const [peopleTasks, freq, unfeedbacked, recent, activeTaskCount] = await Promise.all([
     fetchPeopleTasks(),
     fetchUpdateFrequency(),
-    prisma.progressUpdate.count({ where: { feedback: null } }),
+    prisma.progressUpdate.count({ where: { feedbacks: { none: {} } } }),
     fetchRecentUpdates(),
     prisma.task.count({ where: { archivedAt: null } }),
   ])
@@ -135,7 +135,7 @@ export async function DashboardAdmin() {
                           {u.task.title}
                         </Link>
                         <span className="text-text-tertiary">— {u.author.name}</span>
-                        {!u.feedback && (
+                        {u.feedbacks.length === 0 && (
                           <span className="rounded-full bg-warning-subtle px-2 py-0.5 text-warning">
                             尚未回饋
                           </span>

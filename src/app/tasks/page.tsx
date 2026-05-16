@@ -11,7 +11,7 @@ export default async function TasksPage() {
   const me = await getCurrentUser()
   const isAdmin = me.role === "admin"
 
-  // Day 1 角色切換：admin 看全部、member 只看自己被指派的（未封存）
+  // 角色切換：admin 看全部、member 只看自己被指派的（未封存）
   const baseWhere = isAdmin ? {} : { assigneeId: me.id }
   const active = await prisma.task.findMany({
     where: { ...baseWhere, archivedAt: null },
@@ -26,7 +26,8 @@ export default async function TasksPage() {
           summary: true,
           status: true,
           createdAt: true,
-          feedback: {
+          feedbacks: {
+            orderBy: { createdAt: "asc" },
             select: {
               id: true,
               content: true,
@@ -76,7 +77,13 @@ export default async function TasksPage() {
         ) : (
           <section className="space-y-3">
             {active.map((task) => (
-              <TaskCard key={task.id} task={task} isAdmin={isAdmin} archived={false} />
+              <TaskCard
+                key={task.id}
+                task={task}
+                isAdmin={isAdmin}
+                currentUserId={me.id}
+                archived={false}
+              />
             ))}
           </section>
         )}
@@ -89,6 +96,7 @@ export default async function TasksPage() {
                 key={task.id}
                 task={{ ...task, updates: [] }}
                 isAdmin={isAdmin}
+                currentUserId={me.id}
                 archived={true}
               />
             ))}
@@ -110,6 +118,8 @@ interface FeedbackOnLatest {
 interface TaskCardData {
   id: string
   title: string
+  assigneeId: string
+  creatorId: string
   dueDate: Date | null
   createdAt: Date
   archivedAt: Date | null
@@ -119,17 +129,19 @@ interface TaskCardData {
     summary: string
     status: string | null
     createdAt: Date
-    feedback: FeedbackOnLatest | null
+    feedbacks: FeedbackOnLatest[]
   }>
 }
 
 function TaskCard({
   task,
   isAdmin,
+  currentUserId,
   archived,
 }: {
   task: TaskCardData
   isAdmin: boolean
+  currentUserId: string
   archived: boolean
 }) {
   const latest = task.updates[0]
@@ -137,6 +149,9 @@ function TaskCard({
     latest?.summary && latest.summary.length > 60
       ? `${latest.summary.slice(0, 60)}…`
       : latest?.summary
+  // 該 task 是否允許回應：未封存 + 使用者跟 task 有關（assignee / creator / admin）
+  const canReplyOnTask =
+    !archived && (isAdmin || currentUserId === task.assigneeId || currentUserId === task.creatorId)
 
   return (
     <article
@@ -162,6 +177,9 @@ function TaskCard({
               </span>
             ) : (
               <span>尚無進度</span>
+            )}
+            {latest && latest.feedbacks.length > 0 && (
+              <span className="text-accent">💬 {latest.feedbacks.length} 則回應</span>
             )}
           </div>
 
@@ -204,23 +222,20 @@ function TaskCard({
         )}
       </div>
 
-      {/* 卡片底部：inline 快速回饋區（封存任務不顯示） */}
+      {/* 卡片底部：留言串（封存任務不顯示） */}
       {!archived &&
         (latest ? (
           <FeedbackSection
             progressUpdateId={latest.id}
-            feedback={
-              latest.feedback
-                ? {
-                    id: latest.feedback.id,
-                    content: latest.feedback.content,
-                    createdAt: latest.feedback.createdAt.toISOString(),
-                    updatedAt: latest.feedback.updatedAt.toISOString(),
-                    author: latest.feedback.author,
-                  }
-                : null
-            }
-            isAdmin={isAdmin}
+            feedbacks={latest.feedbacks.map((f) => ({
+              id: f.id,
+              content: f.content,
+              createdAt: f.createdAt.toISOString(),
+              updatedAt: f.updatedAt.toISOString(),
+              author: f.author,
+            }))}
+            currentUserId={currentUserId}
+            canReply={canReplyOnTask}
           />
         ) : (
           <TaskQuickFeedback taskId={task.id} isAdmin={isAdmin} />

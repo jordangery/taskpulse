@@ -1,8 +1,8 @@
 import { formatDistanceToNow } from "date-fns"
 import { zhTW } from "date-fns/locale"
-import { FeedbackSection } from "./feedback-section"
+import { FeedbackSection, type FeedbackThreadItem } from "./feedback-section"
 
-interface FeedbackData {
+interface FeedbackRow {
   id: string
   content: string
   createdAt: Date
@@ -17,15 +17,20 @@ interface ProgressUpdateItem {
   status: string | null
   createdAt: Date
   author: { id: string; name: string }
-  feedback: FeedbackData | null
+  feedbacks: FeedbackRow[]
 }
 
 interface ProgressUpdateListProps {
   updates: ProgressUpdateItem[]
-  isAdmin: boolean
+  currentUserId: string
+  canReplyOnTask: boolean // 該 task 是否允許回應（非封存 + 使用者跟 task 有關係）
 }
 
-export function ProgressUpdateList({ updates, isAdmin }: ProgressUpdateListProps) {
+export function ProgressUpdateList({
+  updates,
+  currentUserId,
+  canReplyOnTask,
+}: ProgressUpdateListProps) {
   if (updates.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-border-default bg-surface px-6 py-10 text-center">
@@ -40,13 +45,26 @@ export function ProgressUpdateList({ updates, isAdmin }: ProgressUpdateListProps
   return (
     <ol className="space-y-3">
       {updates.map((u) => (
-        <ProgressUpdateCard key={u.id} update={u} isAdmin={isAdmin} />
+        <ProgressUpdateCard
+          key={u.id}
+          update={u}
+          currentUserId={currentUserId}
+          canReply={canReplyOnTask}
+        />
       ))}
     </ol>
   )
 }
 
-function ProgressUpdateCard({ update, isAdmin }: { update: ProgressUpdateItem; isAdmin: boolean }) {
+function ProgressUpdateCard({
+  update,
+  currentUserId,
+  canReply,
+}: {
+  update: ProgressUpdateItem
+  currentUserId: string
+  canReply: boolean
+}) {
   return (
     <li className="rounded-md border border-border-subtle bg-surface px-4 py-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -67,18 +85,15 @@ function ProgressUpdateCard({ update, isAdmin }: { update: ProgressUpdateItem; i
 
       <FeedbackSection
         progressUpdateId={update.id}
-        feedback={
-          update.feedback
-            ? {
-                id: update.feedback.id,
-                content: update.feedback.content,
-                createdAt: update.feedback.createdAt.toISOString(),
-                updatedAt: update.feedback.updatedAt.toISOString(),
-                author: update.feedback.author,
-              }
-            : null
-        }
-        isAdmin={isAdmin}
+        feedbacks={update.feedbacks.map<FeedbackThreadItem>((f) => ({
+          id: f.id,
+          content: f.content,
+          createdAt: f.createdAt.toISOString(),
+          updatedAt: f.updatedAt.toISOString(),
+          author: f.author,
+        }))}
+        currentUserId={currentUserId}
+        canReply={canReply}
       />
     </li>
   )

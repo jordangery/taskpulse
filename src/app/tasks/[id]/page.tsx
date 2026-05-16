@@ -31,7 +31,8 @@ export default async function TaskDetailPage({ params }: PageProps) {
           status: true,
           createdAt: true,
           author: { select: { id: true, name: true } },
-          feedback: {
+          feedbacks: {
+            orderBy: { createdAt: "asc" },
             select: {
               id: true,
               content: true,
@@ -132,7 +133,11 @@ export default async function TaskDetailPage({ params }: PageProps) {
           <h2 className="text-sm font-medium text-text-secondary">
             進度歷史（{task.updates.length} 筆，最新在最上面）
           </h2>
-          <ProgressUpdateList updates={task.updates} isAdmin={isAdmin} />
+          <ProgressUpdateList
+            updates={task.updates}
+            currentUserId={me.id}
+            canReplyOnTask={!isArchived}
+          />
         </section>
       </div>
     </div>
