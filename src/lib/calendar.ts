@@ -11,6 +11,7 @@
 
 import { addDays, startOfDay, startOfWeek } from "date-fns"
 import { prisma } from "./db"
+import { getTaiwanHolidaysInRange } from "./holidays"
 
 export interface CalendarTask {
   id: string
@@ -22,6 +23,7 @@ export interface CalendarTask {
 export interface CalendarEvent {
   date: string
   tasks: CalendarTask[]
+  holiday?: string
 }
 
 export interface CalendarData {
@@ -78,8 +80,14 @@ export async function fetchCalendarEvents(userId: string, isAdmin: boolean): Pro
     })
   }
 
+  const holidays = getTaiwanHolidaysInRange(start, end)
+
   return {
-    events: Array.from(buckets.entries()).map(([date, tasks]) => ({ date, tasks })),
+    events: Array.from(buckets.entries()).map(([date, tasks]) => ({
+      date,
+      tasks,
+      holiday: holidays.get(date),
+    })),
     todayKey: toLocalKey(today),
     startKey: toLocalKey(start),
   }

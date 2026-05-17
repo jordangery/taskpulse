@@ -3,7 +3,7 @@
 import { Prisma } from "@prisma/client"
 import { revalidatePath } from "next/cache"
 import { createNotification } from "@/lib/actions/notifications"
-import { requireAdmin } from "@/lib/current-user"
+import { getCurrentUser, requireAdmin } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
 import { type TaskFormValues, taskFormSchema } from "@/lib/schemas/task"
 
@@ -122,4 +122,45 @@ export async function reopenTask(id: string): Promise<void> {
   await prisma.task.update({ where: { id }, data: { completedAt: null } })
   revalidatePath("/tasks")
   revalidatePath(`/tasks/${id}`)
+}
+
+// Phase F - dashboard calendar drag-drop 用：把任務 dueDate 改成 dateKey 當天零點 (local time)
+// 權限：admin 可以拖任何任務；member 只能拖自己被指派的（assigneeId === me.id）
+const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+
+export async function updateTaskDueDate(
+  taskId: string,
+  newDueDateKey: string,
+): Promise<TaskActionResult> {
+  if (!DATE_KEY_PATTERN.test(newDueDateKey)) {
+    return { success: false, error: "日期格式錯誤" }
+  }
+  const me = await getCurrentUser()
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { id: true, assigneeId: true, archivedAt: true },
+  })
+  if (!task) return { success: false, error: "找不到該任務" }
+  if (task.archivedAt) return { success: false, error: "該任務已封存" }
+  if (me.role !== "admin" && task.assigneeId !== me.id) {
+    return { success: false, error: "沒有權限變更這個任務" }
+  }
+
+  // local time 零點：用 Date(y, m-1, d) 而非 ISO 字串，避免 UTC 偏移把日期偏移到前/後一天
+  const [y, m, d] = newDueDateKey.split("-").map(Number)
+  const newDueDate = new Date(y, m - 1, d, 0, 0, 0, 0)
+  // 二次驗證日期合法（例如 2026-02-30 自動 roll 到 3 月）
+  if (
+    newDueDate.getFullYear() !== y ||
+    newDueDate.getMonth() !== m - 1 ||
+    newDueDate.getDate() !== d
+  ) {
+    return { success: false, error: "日期不存在" }
+  }
+
+  await prisma.task.update({ where: { id: taskId }, data: { dueDate: newDueDate } })
+  revalidatePath("/")
+  revalidatePath("/tasks")
+  revalidatePath(`/tasks/${taskId}`)
+  return { success: true, data: { id: taskId } }
 }
