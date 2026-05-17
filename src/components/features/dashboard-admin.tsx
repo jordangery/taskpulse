@@ -88,7 +88,7 @@ export async function DashboardAdmin() {
 
   return (
     <div className="flex flex-1 flex-col px-6 py-6">
-      <div className="mx-auto w-full max-w-5xl space-y-6">
+      <div className="mx-auto w-full max-w-7xl space-y-6">
         <header>
           <h1 className="text-2xl font-semibold text-text-primary">Dashboard</h1>
           <p className="mt-1 text-sm text-text-secondary">
@@ -101,9 +101,8 @@ export async function DashboardAdmin() {
 
         <DashboardCalendar events={calendar.events} todayKey={calendar.todayKey} />
 
-        <DashboardJiraWidget scope="team" />
-
-        <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* 3-col：兩張 chart + 未獲回饋大數字 */}
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Card title="每人活躍任務數" hint="未封存任務按 assignee 分組">
             <ChartPeopleTasks data={peopleTasks} />
           </Card>
@@ -111,9 +110,7 @@ export async function DashboardAdmin() {
           <Card title="本週進度更新頻率" hint="近 7 天每天的 ProgressUpdate 數量">
             <ChartUpdateFrequency data={freq} />
           </Card>
-        </section>
 
-        <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <Card title="未獲回饋進度" hint="尚無 1:1 回饋的 ProgressUpdate 數">
             <div className="flex h-24 items-center justify-center">
               <span
@@ -125,8 +122,11 @@ export async function DashboardAdmin() {
               </span>
             </div>
           </Card>
+        </section>
 
-          <Card title="最近 5 筆進度動態" hint="跨任務 timeline" className="lg:col-span-2">
+        {/* 12-col：左 7 最近動態、右 5 Jira widget */}
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <Card title="最近 5 筆進度動態" hint="跨任務 timeline" className="lg:col-span-7">
             {recent.length === 0 ? (
               <p className="py-6 text-center text-sm text-text-tertiary">還沒有進度紀錄</p>
             ) : (
@@ -161,6 +161,10 @@ export async function DashboardAdmin() {
               </ul>
             )}
           </Card>
+
+          <div className="lg:col-span-5">
+            <DashboardJiraWidget scope="team" />
+          </div>
         </section>
       </div>
     </div>
