@@ -3,7 +3,7 @@
 // Server-only Atlassian Jira 整合
 // - 每個 user 在 PrismaAdapter 的 Account row（provider="atlassian"）存 access_token / refresh_token / expires_at
 // - 過期前用 refresh_token 換新的，並回寫 DB
-// - 拿 token 後先打 /oauth/token/accessible-resources 拿 cloudId，再打 /ex/jira/{cloudId}/rest/api/3/search
+// - 拿 token 後先打 /oauth/token/accessible-resources 拿 cloudId，再打 /ex/jira/{cloudId}/rest/api/3/search/jql
 //
 // 對應 taskpulse user：用 issue.fields.assignee.emailAddress 對 prisma.user.email
 // match 不到就 fallback 顯示 Atlassian displayName
@@ -148,7 +148,10 @@ async function fetchIssuesForCloud(
   cloudId: string,
   siteUrl: string,
 ): Promise<JiraIssue[]> {
-  const url = new URL(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/search`)
+  // 用新版 /search/jql 端點（舊 /search 已於 2025-04 棄用，2025-05 完全移除）
+  // 參考 https://developer.atlassian.com/changelog/#CHANGE-2046
+  // 差異：response 用 nextPageToken 分頁（不再回 total / startAt）；request shape 相同
+  const url = new URL(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/search/jql`)
   url.searchParams.set("jql", JIRA_JQL)
   url.searchParams.set("fields", JIRA_FIELDS)
   url.searchParams.set("maxResults", String(JIRA_MAX_RESULTS))
