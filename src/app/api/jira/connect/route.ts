@@ -2,13 +2,13 @@
 //
 // Phase D - Atlassian secondary OAuth 入口
 // 從 dashboard 的 "Connect Atlassian" 表單 POST 過來
-// 直接 redirect 到 NextAuth 的 signin 端點（避免 NextAuth signIn() 在 route handler 內的 redirect 異常）
 //
-// 注意：env 沒設 Atlassian provider 時，NextAuth signin endpoint 會回 error，
-// 但我們在 widget 那邊已先攔到 not_configured，這 route 走不到該分支
+// 用 NextAuth v5 server signIn() 直接 kick off OAuth，避免被自訂 /login 攔截
+// （我們 auth.config.ts 設了 pages.signIn = "/login"，那頁只放 Google + dev-impersonate
+//  → 不能讓 NextAuth 走預設 signin page）
 
-import { redirect } from "next/navigation"
+import { signIn } from "@/auth"
 
 export async function POST() {
-  redirect("/api/auth/signin/atlassian?callbackUrl=/")
+  await signIn("atlassian", { redirectTo: "/" })
 }
