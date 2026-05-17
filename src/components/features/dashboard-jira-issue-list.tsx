@@ -16,6 +16,8 @@ interface Props {
 // 順序就是 chip 顯示順序：開放 → 進行中 → review → 已完成 → 其他
 // match: null 代表 fallback bucket（其他），不靠關鍵字而是「沒被前面任何 bucket 撈到」就進來
 type BucketId = "open" | "in_progress" | "review" | "done" | "other"
+// match 用 keyword：英文（Jira 預設）+ 繁簡中文都列（內部 Jira workflow 常用中文 status name）
+// 順序很重要：已完成必須先 match 再到 進行中，否則「已修復」會被「修復中」之類的關鍵字搶走
 const BUCKETS: ReadonlyArray<{
   id: BucketId
   label: string
@@ -24,32 +26,37 @@ const BUCKETS: ReadonlyArray<{
   activeCls: string
 }> = [
   {
-    id: "open",
-    label: "開放",
-    match: /todo|open|backlog|to do|new|selected/,
-    cls: "bg-warning-subtle text-warning",
-    activeCls: "bg-warning text-text-inverse",
-  },
-  {
-    id: "in_progress",
-    label: "進行中",
-    match: /progress|doing|develop/,
-    cls: "bg-accent-subtle text-accent",
-    activeCls: "bg-accent text-text-inverse",
+    id: "done",
+    label: "已完成",
+    // 英文 + 中文（已修復/已完成/已關閉/已解決/完成/結案/關閉/解決）
+    match:
+      /done|closed|resolved|complete|已修復|已完成|已關閉|已解決|已结案|完成|结案|关闭|关闭|完了/i,
+    cls: "bg-success-subtle text-success",
+    activeCls: "bg-success text-text-inverse",
   },
   {
     id: "review",
     label: "Review",
-    match: /review|qa|verify/,
+    // 審查 / 驗證 / 待測 / 待審 / QA
+    match: /review|qa|verify|待審|待測|審查|审查|待验|驗證|验证|待確認/i,
     cls: "bg-info-subtle text-info",
     activeCls: "bg-info text-text-inverse",
   },
   {
-    id: "done",
-    label: "已完成",
-    match: /done|closed|resolved|complete/,
-    cls: "bg-success-subtle text-success",
-    activeCls: "bg-success text-text-inverse",
+    id: "in_progress",
+    label: "進行中",
+    // 進行中 / 開發中 / 處理中 / 修復中
+    match: /progress|doing|develop|進行中|进行中|開發中|开发中|處理中|处理中|修復中|修复中/i,
+    cls: "bg-accent-subtle text-accent",
+    activeCls: "bg-accent text-text-inverse",
+  },
+  {
+    id: "open",
+    label: "開放",
+    // 開放 / 待辦 / 新增 / 待處理 / Backlog
+    match: /todo|open|backlog|to do|new|selected|開放|开放|待辦|待办|待處理|待处理|新增|未指派/i,
+    cls: "bg-warning-subtle text-warning",
+    activeCls: "bg-warning text-text-inverse",
   },
   {
     id: "other",
@@ -59,6 +66,10 @@ const BUCKETS: ReadonlyArray<{
     activeCls: "bg-text-tertiary text-text-inverse",
   },
 ]
+
+// chips 顯示順序（跟 match 優先順序不同：match 要先試「已完成」避免「已修復」被搶；
+// 顯示則維持人眼直覺從新到舊的工作流順序）
+const DISPLAY_ORDER: BucketId[] = ["open", "in_progress", "review", "done", "other"]
 
 function bucketIdFor(status: string): BucketId {
   const lower = status.toLowerCase()
@@ -105,7 +116,9 @@ export function JiraIssueList({ issues, showAssignee }: Props) {
         >
           全部 {issues.length}
         </button>
-        {BUCKETS.map((b) => {
+        {DISPLAY_ORDER.map((id) => {
+          const b = BUCKETS.find((x) => x.id === id)
+          if (!b) return null
           const count = countsByBucket[b.id]
           const active = filter === b.id
           // count = 0 也保留，但顯示稍微暗（讓 user 知道 bucket 在但目前沒票）
