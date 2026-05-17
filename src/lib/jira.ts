@@ -8,19 +8,18 @@
 // 對應 taskpulse user：用 issue.fields.assignee.emailAddress 對 prisma.user.email
 // match 不到就 fallback 顯示 Atlassian displayName
 //
-// Admin 模式（fetchTeamJiraIssues）：N+1 API calls（每位 connected user 各打一次）
-// MVP 階段沒做 dedupe / cache，trade-off 是團隊大時延遲線性成長；之後可加 in-memory cache
-// 或 server-side react cache
+// Admin 模式（fetchTeamJiraIssues）：用「任一 admin 的 token」一條線去 Jira 撈所有 taskpulse
+// 成員的票（不要求每位 member 自己連 Atlassian）。流程：對每個 member email 各打一次
+// /rest/api/3/user/search 拿 accountId，再用單一 JQL `assignee in (...)` 撈完。
+// 限制：admin Atlassian 要能看到組員的 Jira project；組員 email 要在同 Atlassian Cloud 組織內。
 
 import "server-only"
 import { prisma } from "./db"
 
 const ATLASSIAN_TOKEN_URL = "https://auth.atlassian.com/oauth/token"
 const ATLASSIAN_RESOURCES_URL = "https://api.atlassian.com/oauth/token/accessible-resources"
-// 把搜尋限縮在 "open"-ish issue：assignee=currentUser() 已經很窄，不再加 status 條件
-const JIRA_JQL = "assignee = currentUser() ORDER BY updated DESC"
 const JIRA_FIELDS = "summary,status,priority,issuetype,duedate,assignee"
-const JIRA_MAX_RESULTS = 25
+const JIRA_MAX_RESULTS = 50
 
 export interface JiraIssue {
   key: string // e.g. "PROJ-123"
@@ -147,12 +146,13 @@ async function fetchIssuesForCloud(
   accessToken: string,
   cloudId: string,
   siteUrl: string,
+  jql: string,
 ): Promise<JiraIssue[]> {
   // 用新版 /search/jql 端點（舊 /search 已於 2025-04 棄用，2025-05 完全移除）
   // 參考 https://developer.atlassian.com/changelog/#CHANGE-2046
   // 差異：response 用 nextPageToken 分頁（不再回 total / startAt）；request shape 相同
   const url = new URL(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/search/jql`)
-  url.searchParams.set("jql", JIRA_JQL)
+  url.searchParams.set("jql", jql)
   url.searchParams.set("fields", JIRA_FIELDS)
   url.searchParams.set("maxResults", String(JIRA_MAX_RESULTS))
 
@@ -214,7 +214,32 @@ async function fetchIssuesForAccount(account: AtlassianAccountToken): Promise<Ji
   if (resources.length === 0) return []
   // MVP：只查第一個 cloudId（多數使用者只有一個 Atlassian site）
   const first = resources[0]
-  return fetchIssuesForCloud(token, first.id, first.url)
+  return fetchIssuesForCloud(
+    token,
+    first.id,
+    first.url,
+    "assignee = currentUser() ORDER BY updated DESC",
+  )
+}
+
+// 給定 email，去 Jira 找對應的 accountId
+// 找不到回 null（user 不在這個 Atlassian Cloud 組織 或 email 不 match）
+async function lookupAccountId(
+  accessToken: string,
+  cloudId: string,
+  email: string,
+): Promise<string | null> {
+  const url = new URL(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/user/search`)
+  url.searchParams.set("query", email)
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+    cache: "no-store",
+  })
+  if (!res.ok) return null
+  const users = (await res.json()) as Array<{ accountId: string; emailAddress?: string }>
+  // 優先 exact email match，再 fallback 第一筆
+  const exact = users.find((u) => u.emailAddress?.toLowerCase() === email.toLowerCase())
+  return exact?.accountId ?? users[0]?.accountId ?? null
 }
 
 /**
@@ -241,53 +266,66 @@ export async function fetchMyJiraIssues(userId: string): Promise<JiraFetchResult
 }
 
 /**
- * Admin：聚合所有 connected user 的 Jira 票
- * 注意：N+1 API calls（每位 connected user 各打一次 accessible-resources + search）
- * 單一 user 失敗不會中斷其他 user，但會把錯誤訊息收集起來
+ * Admin：用「任一 admin 的 Atlassian token」查所有 taskpulse 成員的 Jira 票
+ *
+ * 改動於 2026-05：原本是 N+1 個 user 各自連 Atlassian 後聚合，但實務上組員不太會主動連，
+ * 改成 admin token 一條線去 Jira 查所有 taskpulse member email 對應的 Jira user。
+ *
+ * 流程：
+ * 1. 找任一 admin 的 Atlassian Account（沒有 → not_connected）
+ * 2. 用該 token 打 /oauth/token/accessible-resources 拿 cloudId
+ * 3. 對每個非封存 taskpulse member 的 email 各打一次 /user/search 拿 Jira accountId
+ *    （找不到的 user 略過，不算錯）
+ * 4. 拼 JQL `assignee in (id1,id2,...) ORDER BY updated DESC` 一次撈完
+ *
+ * 限制：admin 的 Atlassian 必須能看到組員的 Jira 專案；組員 email 必須在同一個
+ * Atlassian Cloud 組織內找得到對應的 Jira user。否則該成員的票就出不來。
  */
 export async function fetchTeamJiraIssues(): Promise<JiraFetchResult> {
   if (!envConfigured()) return { kind: "not_configured" }
 
-  const accounts = await prisma.account.findMany({
-    where: { provider: "atlassian" },
+  // 任一 admin（不挑特定一位，先找到的就用）
+  const adminAccount = await prisma.account.findFirst({
+    where: { provider: "atlassian", user: { role: "admin" } },
     select: {
       id: true,
       access_token: true,
       refresh_token: true,
       expires_at: true,
-      user: { select: { name: true } },
     },
   })
+  if (!adminAccount) return { kind: "not_connected" }
 
-  if (accounts.length === 0) return { kind: "not_connected" }
-
-  // 平行抓所有 user 的 issues；個別失敗不影響整體
-  const results = await Promise.allSettled(accounts.map((a) => fetchIssuesForAccount(a)))
-
-  const issues: JiraIssue[] = []
-  const errors: string[] = []
-  results.forEach((r, idx) => {
-    const accountUserName = accounts[idx]?.user?.name ?? "unknown"
-    if (r.status === "fulfilled") {
-      issues.push(...r.value)
-    } else {
-      const msg = r.reason instanceof Error ? r.reason.message : String(r.reason)
-      errors.push(`${accountUserName}: ${msg}`)
-    }
-  })
-
-  // De-dupe by key（同一張票可能多人都看得到）
-  const seen = new Set<string>()
-  const uniqueIssues = issues.filter((i) => {
-    if (seen.has(i.key)) return false
-    seen.add(i.key)
-    return true
-  })
-
-  // 全部都失敗 → 視為 error
-  if (uniqueIssues.length === 0 && errors.length > 0) {
-    return { kind: "error", message: errors.join("; ") }
+  const token = await ensureAccessToken(adminAccount)
+  if (!token) {
+    return { kind: "error", message: "Admin Atlassian token 失效，請重新連結" }
   }
 
-  return { kind: "ok", issues: uniqueIssues }
+  try {
+    const resources = await fetchAccessibleResources(token)
+    if (resources.length === 0) return { kind: "ok", issues: [] }
+    const { id: cloudId, url: siteUrl } = resources[0]
+
+    // 撈所有非封存 taskpulse member 的 email
+    const members = await prisma.user.findMany({
+      where: { archivedAt: null },
+      select: { email: true, name: true },
+    })
+    if (members.length === 0) return { kind: "ok", issues: [] }
+
+    // 平行對每個 email 找 Jira accountId（找不到的略過）
+    const lookups = await Promise.all(members.map((m) => lookupAccountId(token, cloudId, m.email)))
+    const accountIds = lookups.filter((id): id is string => Boolean(id))
+    if (accountIds.length === 0) return { kind: "ok", issues: [] }
+
+    // 一次性 JQL 撈
+    const jql = `assignee in (${accountIds.map((id) => `"${id}"`).join(",")}) ORDER BY updated DESC`
+    const issues = await fetchIssuesForCloud(token, cloudId, siteUrl, jql)
+    return { kind: "ok", issues }
+  } catch (err) {
+    return {
+      kind: "error",
+      message: err instanceof Error ? err.message : "未知錯誤",
+    }
+  }
 }
