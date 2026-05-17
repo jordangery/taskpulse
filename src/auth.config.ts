@@ -36,7 +36,9 @@ const atlassianProvider =
             url: "https://auth.atlassian.com/authorize",
             params: {
               audience: "api.atlassian.com",
-              scope: "read:me read:jira-work read:jira-user offline_access",
+              // 讀寫都要：read 撈票 / write 建票+改票+加 comment+transition
+              scope:
+                "read:me read:jira-work read:jira-user write:jira-work offline_access",
               prompt: "consent",
             },
           },
