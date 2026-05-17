@@ -54,12 +54,23 @@ model Task {
   archivedAt    DateTime?
   completedAt   DateTime?
 
+  // Jira sync（taskpulse 是 source of truth；建 task 後嘗試 push 到 Jira）
+  // 狀態：
+  //   key=null  error=null   → 未嘗試（剛建好或之前失敗清掉）
+  //   key=null  error="..."  → 失敗
+  //   key="X"   syncedAt=t   → 已同步
+  jiraIssueKey     String?   @unique
+  jiraSyncedAt     DateTime?
+  jiraSyncError    String?
+  jiraSyncAttempts Int       @default(0)
+
   updates       ProgressUpdate[]
   notifications Notification[]
 
   @@index([assigneeId])
   @@index([archivedAt])
   @@index([completedAt])
+  @@index([jiraIssueKey])
 }
 
 // 進度摘要：append-only 歷史紀錄

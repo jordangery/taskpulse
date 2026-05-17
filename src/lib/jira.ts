@@ -222,6 +222,132 @@ async function fetchIssuesForAccount(account: AtlassianAccountToken): Promise<Ji
   )
 }
 
+// ---------- Sync taskpulse Task → Jira issue（建立） ----------
+
+export type JiraCreatePayload = {
+  title: string
+  description: string | null
+  dueDate: Date | null
+  assigneeEmail: string
+}
+export type JiraCreateResult =
+  | { kind: "not_configured" }
+  | { kind: "not_connected" } // 沒任何 admin 連 Atlassian
+  | { kind: "ok"; issueKey: string }
+  | { kind: "error"; message: string }
+
+// 用 admin token push 一筆 task 到 Jira
+// 流程：admin token → cloudId → project (取第一個 accessible) → assignee accountId → POST issue
+export async function createJiraIssueFromTask(p: JiraCreatePayload): Promise<JiraCreateResult> {
+  if (!envConfigured()) return { kind: "not_configured" }
+
+  const adminAccount = await prisma.account.findFirst({
+    where: { provider: "atlassian", user: { role: "admin" } },
+    select: { id: true, access_token: true, refresh_token: true, expires_at: true },
+  })
+  if (!adminAccount) return { kind: "not_connected" }
+
+  const token = await ensureAccessToken(adminAccount)
+  if (!token) return { kind: "error", message: "Admin Atlassian token 失效" }
+
+  try {
+    const resources = await fetchAccessibleResources(token)
+    if (resources.length === 0)
+      return { kind: "error", message: "Admin 沒任何 accessible Jira site" }
+    const { id: cloudId } = resources[0]
+
+    // 拿第一個 project key（簡單策略；多 project 之後做 settings）
+    const projectKey = await fetchFirstProjectKey(token, cloudId)
+    if (!projectKey) return { kind: "error", message: "Admin 看不到任何 Jira project" }
+
+    // assignee accountId
+    const assigneeAccountId = await lookupAccountId(token, cloudId, p.assigneeEmail)
+
+    // POST /rest/api/3/issue
+    const body: Record<string, unknown> = {
+      fields: {
+        project: { key: projectKey },
+        summary: p.title,
+        issuetype: { name: "Task" },
+        ...(p.description
+          ? {
+              description: {
+                type: "doc",
+                version: 1,
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [{ type: "text", text: p.description }],
+                  },
+                ],
+              },
+            }
+          : {}),
+        ...(p.dueDate ? { duedate: toJiraDateKey(p.dueDate) } : {}),
+        ...(assigneeAccountId ? { assignee: { accountId: assigneeAccountId } } : {}),
+      },
+    }
+    const url = `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/issue`
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => "")
+      return { kind: "error", message: `${res.status} ${text.slice(0, 300)}` }
+    }
+    const data = (await res.json()) as { key?: string }
+    if (!data.key) return { kind: "error", message: "Jira 回應沒帶 issue key" }
+    return { kind: "ok", issueKey: data.key }
+  } catch (err) {
+    return { kind: "error", message: err instanceof Error ? err.message : "未知錯誤" }
+  }
+}
+
+// 拿第一個 admin 看得到的 project key（簡單 MVP；多 project 環境之後加 settings 選）
+async function fetchFirstProjectKey(token: string, cloudId: string): Promise<string | null> {
+  const url = `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/project/search?maxResults=1`
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    cache: "no-store",
+  })
+  if (!res.ok) return null
+  const data = (await res.json()) as { values?: Array<{ key: string }> }
+  return data.values?.[0]?.key ?? null
+}
+
+// Jira API 收的是 local YYYY-MM-DD（不是 ISO 時戳）
+function toJiraDateKey(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
+// Jira issue browse URL（給 UI 連過去用）
+export async function getJiraBrowseUrl(issueKey: string): Promise<string | null> {
+  if (!envConfigured()) return null
+  const adminAccount = await prisma.account.findFirst({
+    where: { provider: "atlassian", user: { role: "admin" } },
+    select: { id: true, access_token: true, refresh_token: true, expires_at: true },
+  })
+  if (!adminAccount) return null
+  const token = await ensureAccessToken(adminAccount)
+  if (!token) return null
+  try {
+    const resources = await fetchAccessibleResources(token)
+    if (resources.length === 0) return null
+    return `${resources[0].url.replace(/\/$/, "")}/browse/${issueKey}`
+  } catch {
+    return null
+  }
+}
+
 // 給定 email，去 Jira 找對應的 accountId
 // 找不到回 null（user 不在這個 Atlassian Cloud 組織 或 email 不 match）
 async function lookupAccountId(

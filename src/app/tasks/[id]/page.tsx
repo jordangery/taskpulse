@@ -5,7 +5,13 @@ import { notFound, redirect } from "next/navigation"
 import { ProgressUpdateForm } from "@/components/features/progress-update-form"
 import { ProgressUpdateList } from "@/components/features/progress-update-list"
 import { createProgressUpdate } from "@/lib/actions/progress-updates"
-import { archiveTask, closeTask, reopenTask, unarchiveTask } from "@/lib/actions/tasks"
+import {
+  archiveTask,
+  closeTask,
+  reopenTask,
+  retryJiraSync,
+  unarchiveTask,
+} from "@/lib/actions/tasks"
 import { getCurrentUser } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
 
@@ -65,7 +71,10 @@ export default async function TaskDetailPage({ params }: PageProps) {
             ← 回任務列表
           </Link>
           <div className="flex items-start justify-between gap-4">
-            <h1 className="text-2xl font-semibold text-text-primary">{task.title}</h1>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-2xl font-semibold text-text-primary">{task.title}</h1>
+              <JiraSyncIndicator task={task} isAdmin={isAdmin} />
+            </div>
             {isAdmin && (
               <div className="flex flex-shrink-0 gap-2">
                 {!isArchived && (
@@ -173,6 +182,50 @@ function Meta({ label, value }: { label: string; value: string }) {
     <div>
       <dt className="text-xs uppercase tracking-wide text-text-tertiary">{label}</dt>
       <dd className="text-text-primary">{value}</dd>
+    </div>
+  )
+}
+
+// Jira 同步狀態指示器：已同步顯 key；未同步 + admin 顯 retry button
+function JiraSyncIndicator({
+  task,
+  isAdmin,
+}: {
+  task: {
+    id: string
+    jiraIssueKey: string | null
+    jiraSyncError: string | null
+    jiraSyncAttempts: number
+  }
+  isAdmin: boolean
+}) {
+  if (task.jiraIssueKey) {
+    return (
+      <p className="mt-1 text-xs">
+        <span className="font-mono text-success">→ {task.jiraIssueKey}</span>
+        <span className="ml-2 text-text-tertiary">已同步到 Jira</span>
+      </p>
+    )
+  }
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+      <span className="rounded-full bg-warning-subtle px-2 py-0.5 text-warning">
+        ⚠ 尚未同步到 Jira
+      </span>
+      {task.jiraSyncError && <span className="text-text-tertiary">（{task.jiraSyncError}）</span>}
+      {task.jiraSyncAttempts > 0 && (
+        <span className="text-text-tertiary">嘗試 {task.jiraSyncAttempts} 次</span>
+      )}
+      {isAdmin && (
+        <form action={retryJiraSync.bind(null, task.id)}>
+          <button
+            type="submit"
+            className="rounded-md border border-border-subtle bg-canvas px-2 py-0.5 text-xs text-text-secondary hover:bg-subtle hover:text-text-primary"
+          >
+            重試同步
+          </button>
+        </form>
+      )}
     </div>
   )
 }

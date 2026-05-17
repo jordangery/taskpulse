@@ -216,6 +216,8 @@ interface TaskCardData {
   createdAt: Date
   archivedAt: Date | null
   completedAt: Date | null
+  jiraIssueKey: string | null
+  jiraSyncError: string | null
   assignee: { id: string; name: string; role: "admin" | "member" }
   updates: Array<{
     id: string
@@ -258,12 +260,26 @@ function TaskCard({
     <article className={`rounded-md border border-border-subtle bg-surface px-4 py-4 ${cardClass}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <Link
-            href={`/tasks/${task.id}`}
-            className="text-base font-medium text-text-primary hover:text-accent"
-          >
-            {task.title}
-          </Link>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Link
+              href={`/tasks/${task.id}`}
+              className="text-base font-medium text-text-primary hover:text-accent"
+            >
+              {task.title}
+            </Link>
+            {task.jiraIssueKey ? (
+              <span className="rounded-full bg-success-subtle px-2 py-0.5 font-mono text-[11px] text-success">
+                {task.jiraIssueKey}
+              </span>
+            ) : (
+              <span
+                title={task.jiraSyncError ?? "尚未嘗試同步"}
+                className="rounded-full bg-warning-subtle px-2 py-0.5 text-[11px] text-warning"
+              >
+                ⚠ 未同步 Jira
+              </span>
+            )}
+          </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-tertiary">
             <span>指派 {task.assignee.name}</span>
             {task.dueDate && <span>截止 {task.dueDate.toLocaleDateString("zh-TW")}</span>}

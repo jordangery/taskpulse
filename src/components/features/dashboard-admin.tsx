@@ -1,6 +1,7 @@
 import { formatDistanceToNow } from "date-fns"
 import { zhTW } from "date-fns/locale"
 import Link from "next/link"
+import { retryJiraSyncAll } from "@/lib/actions/tasks"
 import { fetchCalendarEvents } from "@/lib/calendar"
 import { requireAdmin } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
@@ -77,14 +78,16 @@ async function fetchRecentUpdates() {
 
 export async function DashboardAdmin() {
   const me = await requireAdmin()
-  const [peopleTasks, freq, unfeedbacked, recent, activeTaskCount, calendar] = await Promise.all([
-    fetchPeopleTasks(),
-    fetchUpdateFrequency(),
-    prisma.progressUpdate.count({ where: { feedbacks: { none: {} } } }),
-    fetchRecentUpdates(),
-    prisma.task.count({ where: { archivedAt: null } }),
-    fetchCalendarEvents(me.id, true),
-  ])
+  const [peopleTasks, freq, unfeedbacked, recent, activeTaskCount, calendar, pendingJiraSync] =
+    await Promise.all([
+      fetchPeopleTasks(),
+      fetchUpdateFrequency(),
+      prisma.progressUpdate.count({ where: { feedbacks: { none: {} } } }),
+      fetchRecentUpdates(),
+      prisma.task.count({ where: { archivedAt: null } }),
+      fetchCalendarEvents(me.id, true),
+      prisma.task.count({ where: { archivedAt: null, jiraIssueKey: null } }),
+    ])
 
   return (
     <div className="flex flex-1 flex-col px-6 py-6">
@@ -98,6 +101,27 @@ export async function DashboardAdmin() {
             </span>
           </p>
         </header>
+
+        {pendingJiraSync > 0 && (
+          <form
+            action={async () => {
+              "use server"
+              await retryJiraSyncAll()
+            }}
+            className="flex items-center justify-between rounded-md border border-warning bg-warning-subtle px-4 py-3"
+          >
+            <div className="text-sm text-warning">
+              <span className="font-medium">⚠ {pendingJiraSync} 個任務還沒同步到 Jira</span>
+              <span className="ml-2 text-xs">（Jira 離線時建立的、或之前同步失敗的）</span>
+            </div>
+            <button
+              type="submit"
+              className="rounded-md bg-warning px-3 py-1 text-xs font-medium text-text-inverse hover:opacity-90"
+            >
+              重試全部
+            </button>
+          </form>
+        )}
 
         <DashboardCalendar events={calendar.events} todayKey={calendar.todayKey} />
 

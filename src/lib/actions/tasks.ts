@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { createNotification } from "@/lib/actions/notifications"
 import { getCurrentUser, requireAdmin } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
+import { createJiraIssueFromTask } from "@/lib/jira"
 import { type TaskFormValues, taskFormSchema } from "@/lib/schemas/task"
 
 export type TaskActionResult =
@@ -42,7 +43,10 @@ export async function createTask(input: TaskFormValues): Promise<TaskActionResul
     }
     throw e
   }
+  // taskpulse 是 source of truth — task 已建好，Jira sync 失敗也不 rollback
+  await syncTaskToJira(createdId)
   revalidatePath("/tasks")
+  revalidatePath("/")
   // 通知被指派的 member（admin 自己指派自己不通知）
   if (parsed.data.assigneeId !== admin.id) {
     await createNotification({
@@ -54,6 +58,90 @@ export async function createTask(input: TaskFormValues): Promise<TaskActionResul
     })
   }
   return { success: true, data: { id: createdId } }
+}
+
+// 推一筆 task 到 Jira 並寫回 sync state（成功 → jiraIssueKey/jiraSyncedAt；失敗 → jiraSyncError）
+// 不丟例外（呼叫端拿不到結果但能照常 revalidate）
+async function syncTaskToJira(taskId: string): Promise<void> {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: {
+      title: true,
+      description: true,
+      dueDate: true,
+      jiraIssueKey: true,
+      assignee: { select: { email: true } },
+    },
+  })
+  if (!task) return
+  if (task.jiraIssueKey) return // 已同步過，避免重複建
+
+  const result = await createJiraIssueFromTask({
+    title: task.title,
+    description: task.description,
+    dueDate: task.dueDate,
+    assigneeEmail: task.assignee.email,
+  })
+
+  if (result.kind === "ok") {
+    await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        jiraIssueKey: result.issueKey,
+        jiraSyncedAt: new Date(),
+        jiraSyncError: null,
+        jiraSyncAttempts: { increment: 1 },
+      },
+    })
+  } else {
+    // not_configured / not_connected / error — 都記成 pending 狀態
+    const msg =
+      result.kind === "not_configured"
+        ? "Jira 整合尚未設定"
+        : result.kind === "not_connected"
+          ? "Admin 還沒連結 Atlassian"
+          : result.message
+    await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        jiraSyncError: msg,
+        jiraSyncAttempts: { increment: 1 },
+      },
+    })
+  }
+}
+
+// 重試所有未同步的 task（jiraIssueKey IS NULL AND archivedAt IS NULL）
+// 從 dashboard banner 觸發；admin only；序列執行避免一次打爆 Jira API
+export async function retryJiraSyncAll(): Promise<{ tried: number; ok: number; failed: number }> {
+  await requireAdmin()
+  const pending = await prisma.task.findMany({
+    where: { jiraIssueKey: null, archivedAt: null },
+    select: { id: true },
+  })
+  let ok = 0
+  let failed = 0
+  for (const t of pending) {
+    await syncTaskToJira(t.id)
+    const after = await prisma.task.findUnique({
+      where: { id: t.id },
+      select: { jiraIssueKey: true },
+    })
+    if (after?.jiraIssueKey) ok++
+    else failed++
+  }
+  revalidatePath("/tasks")
+  revalidatePath("/")
+  return { tried: pending.length, ok, failed }
+}
+
+// 單筆重試（task 詳情頁觸發；form 直接 .bind(null, id)，回 void）
+export async function retryJiraSync(taskId: string): Promise<void> {
+  await requireAdmin()
+  await syncTaskToJira(taskId)
+  revalidatePath("/tasks")
+  revalidatePath(`/tasks/${taskId}`)
+  revalidatePath("/")
 }
 
 export async function updateTask(id: string, input: TaskFormValues): Promise<TaskActionResult> {
