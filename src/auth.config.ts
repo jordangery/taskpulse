@@ -36,9 +36,13 @@ const atlassianProvider =
             url: "https://auth.atlassian.com/authorize",
             params: {
               audience: "api.atlassian.com",
-              // 讀寫都要：read 撈票 / write 建票+改票+加 comment+transition
-              scope:
-                "read:me read:jira-work read:jira-user write:jira-work offline_access",
+              // 預設只 read（撈票 / 查 user / 拿 cloudId）
+              // 想開寫入（建/改 issue + comment + transition）：
+              //   1. 這裡加 write:jira-work
+              //   2. Atlassian Developer Console 也要加同 scope
+              //   3. 重連 Atlassian 拿新 token
+              //   4. 環境變數 ATLASSIAN_WRITE_ENABLED=true
+              scope: "read:me read:jira-work read:jira-user offline_access",
               prompt: "consent",
             },
           },

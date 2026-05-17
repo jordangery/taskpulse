@@ -12,6 +12,11 @@ import { TaskQuickFeedback } from "@/components/features/task-quick-feedback"
 import { archiveTask, unarchiveTask } from "@/lib/actions/tasks"
 import { getCurrentUser } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
+import { jiraWriteEnabled as _jiraWriteEnabled } from "@/lib/jira"
+
+// 在 module scope 算一次（process.env 不會在 request 間變動），
+// TaskCard 是純展示元件用這顆 boolean 即可
+const jiraWriteEnabled = _jiraWriteEnabled()
 
 interface SearchParams {
   q?: string
@@ -267,17 +272,21 @@ function TaskCard({
             >
               {task.title}
             </Link>
+            {/* 已同步：永遠顯示 issue key（純資訊不擾人）
+                未同步：只在「寫入啟用」時才顯示警告 pill，避免讀取模式下整排黃色 */}
             {task.jiraIssueKey ? (
               <span className="rounded-full bg-success-subtle px-2 py-0.5 font-mono text-[11px] text-success">
                 {task.jiraIssueKey}
               </span>
             ) : (
-              <span
-                title={task.jiraSyncError ?? "尚未嘗試同步"}
-                className="rounded-full bg-warning-subtle px-2 py-0.5 text-[11px] text-warning"
-              >
-                ⚠ 未同步 Jira
-              </span>
+              jiraWriteEnabled && (
+                <span
+                  title={task.jiraSyncError ?? "尚未嘗試同步"}
+                  className="rounded-full bg-warning-subtle px-2 py-0.5 text-[11px] text-warning"
+                >
+                  ⚠ 未同步 Jira
+                </span>
+              )
             )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-tertiary">

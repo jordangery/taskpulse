@@ -14,6 +14,7 @@ import {
 } from "@/lib/actions/tasks"
 import { getCurrentUser } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
+import { jiraWriteEnabled } from "@/lib/jira"
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -187,6 +188,7 @@ function Meta({ label, value }: { label: string; value: string }) {
 }
 
 // Jira 同步狀態指示器：已同步顯 key；未同步 + admin 顯 retry button
+// 寫入未啟用時，未同步狀態整個藏起來（避免讀取模式滿屏黃色警告）
 function JiraSyncIndicator({
   task,
   isAdmin,
@@ -207,6 +209,7 @@ function JiraSyncIndicator({
       </p>
     )
   }
+  if (!jiraWriteEnabled()) return null
   return (
     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
       <span className="rounded-full bg-warning-subtle px-2 py-0.5 text-warning">

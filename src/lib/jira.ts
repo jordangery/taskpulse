@@ -73,6 +73,13 @@ function envConfigured(): boolean {
   return Boolean(process.env.ATLASSIAN_CLIENT_ID && process.env.ATLASSIAN_CLIENT_SECRET)
 }
 
+// 寫入（建/改 issue + transition + comment）需要 ATLASSIAN_WRITE_ENABLED=true 才會真的打 API
+// 預設 off，避免測試階段不小心把怪資料推到正式 Jira project
+// 想開：env 設 true + auth.config.ts scope 加 write:jira-work + Developer Console 也要加 + 重連
+export function jiraWriteEnabled(): boolean {
+  return process.env.ATLASSIAN_WRITE_ENABLED === "true"
+}
+
 /**
  * 確保 access_token 仍有效；過期則用 refresh_token 換新並寫回 DB。
  * 回傳：可用的 access_token 字串 / null（取不到）
@@ -240,6 +247,7 @@ export type JiraCreateResult =
 // 流程：admin token → cloudId → project (取第一個 accessible) → assignee accountId → POST issue
 export async function createJiraIssueFromTask(p: JiraCreatePayload): Promise<JiraCreateResult> {
   if (!envConfigured()) return { kind: "not_configured" }
+  if (!jiraWriteEnabled()) return { kind: "not_configured" } // 寫入未啟用，等同於未設定
 
   const adminAccount = await prisma.account.findFirst({
     where: { provider: "atlassian", user: { role: "admin" } },
@@ -327,6 +335,7 @@ export type JiraUpdateResult =
 
 export async function updateJiraIssueFromTask(p: JiraUpdatePayload): Promise<JiraUpdateResult> {
   if (!envConfigured()) return { kind: "not_configured" }
+  if (!jiraWriteEnabled()) return { kind: "not_configured" }
   const adminAccount = await prisma.account.findFirst({
     where: { provider: "atlassian", user: { role: "admin" } },
     select: { id: true, access_token: true, refresh_token: true, expires_at: true },
@@ -387,6 +396,7 @@ export async function updateJiraIssueFromTask(p: JiraUpdatePayload): Promise<Jir
 // 失敗只 log 不丟例外，避免拖垮 taskpulse 原本的 progress/feedback 動作
 export async function addJiraComment(issueKey: string, body: string): Promise<void> {
   if (!envConfigured()) return
+  if (!jiraWriteEnabled()) return
   const adminAccount = await prisma.account.findFirst({
     where: { provider: "atlassian", user: { role: "admin" } },
     select: { id: true, access_token: true, refresh_token: true, expires_at: true },
@@ -448,6 +458,7 @@ export async function transitionJiraIssue(
   direction: JiraTransitionDirection,
 ): Promise<JiraTransitionResult> {
   if (!envConfigured()) return { kind: "not_configured" }
+  if (!jiraWriteEnabled()) return { kind: "not_configured" }
   const adminAccount = await prisma.account.findFirst({
     where: { provider: "atlassian", user: { role: "admin" } },
     select: { id: true, access_token: true, refresh_token: true, expires_at: true },

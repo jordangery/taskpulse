@@ -5,6 +5,7 @@ import { retryJiraSyncAll } from "@/lib/actions/tasks"
 import { fetchCalendarEvents } from "@/lib/calendar"
 import { requireAdmin } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
+import { jiraWriteEnabled } from "@/lib/jira"
 import { ChartPeopleTasks } from "./chart-people-tasks"
 import { ChartUpdateFrequency } from "./chart-update-frequency"
 import { DashboardCalendar } from "./dashboard-calendar"
@@ -102,7 +103,7 @@ export async function DashboardAdmin() {
           </p>
         </header>
 
-        {pendingJiraSync > 0 && (
+        {jiraWriteEnabled() && pendingJiraSync > 0 && (
           <form
             action={async () => {
               "use server"
