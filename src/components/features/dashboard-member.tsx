@@ -1,14 +1,16 @@
 import { formatDistanceToNow } from "date-fns"
 import { zhTW } from "date-fns/locale"
 import Link from "next/link"
+import { fetchCalendarEvents } from "@/lib/calendar"
 import { prisma } from "@/lib/db"
+import { DashboardCalendar } from "./dashboard-calendar"
 
 interface Props {
   user: { id: string; name: string }
 }
 
 export async function DashboardMember({ user }: Props) {
-  const [tasks, latestFeedbacks] = await Promise.all([
+  const [tasks, latestFeedbacks, calendar] = await Promise.all([
     prisma.task.findMany({
       where: { assigneeId: user.id, archivedAt: null },
       orderBy: { createdAt: "desc" },
@@ -44,6 +46,7 @@ export async function DashboardMember({ user }: Props) {
         },
       },
     }),
+    fetchCalendarEvents(user.id, false),
   ])
 
   return (
@@ -55,6 +58,8 @@ export async function DashboardMember({ user }: Props) {
             指派給你的 {tasks.length} 筆任務｜最近收到 {latestFeedbacks.length} 筆回應
           </p>
         </header>
+
+        <DashboardCalendar events={calendar.events} todayKey={calendar.todayKey} />
 
         <section className="space-y-3">
           <h2 className="text-sm font-medium text-text-secondary">我的任務</h2>

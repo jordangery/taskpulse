@@ -1,9 +1,12 @@
 import { formatDistanceToNow } from "date-fns"
 import { zhTW } from "date-fns/locale"
 import Link from "next/link"
+import { fetchCalendarEvents } from "@/lib/calendar"
+import { requireAdmin } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
 import { ChartPeopleTasks } from "./chart-people-tasks"
 import { ChartUpdateFrequency } from "./chart-update-frequency"
+import { DashboardCalendar } from "./dashboard-calendar"
 
 const WEEK_DAYS = 7
 const MS_PER_DAY = 24 * 60 * 60 * 1000
@@ -72,12 +75,14 @@ async function fetchRecentUpdates() {
 }
 
 export async function DashboardAdmin() {
-  const [peopleTasks, freq, unfeedbacked, recent, activeTaskCount] = await Promise.all([
+  const me = await requireAdmin()
+  const [peopleTasks, freq, unfeedbacked, recent, activeTaskCount, calendar] = await Promise.all([
     fetchPeopleTasks(),
     fetchUpdateFrequency(),
     prisma.progressUpdate.count({ where: { feedbacks: { none: {} } } }),
     fetchRecentUpdates(),
     prisma.task.count({ where: { archivedAt: null } }),
+    fetchCalendarEvents(me.id, true),
   ])
 
   return (
@@ -92,6 +97,8 @@ export async function DashboardAdmin() {
             </span>
           </p>
         </header>
+
+        <DashboardCalendar events={calendar.events} todayKey={calendar.todayKey} />
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card title="每人活躍任務數" hint="未封存任務按 assignee 分組">
