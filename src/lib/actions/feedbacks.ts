@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { createNotification } from "@/lib/actions/notifications"
 import { getCurrentUser, requireAdmin } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
+import { addJiraComment } from "@/lib/jira"
 import {
   ADMIN_QUICK_FEEDBACK_MARKER,
   type FeedbackFormValues,
@@ -64,7 +65,13 @@ export async function createFeedback(
       taskId: true,
       authorId: true,
       task: {
-        select: { title: true, assigneeId: true, creatorId: true, archivedAt: true },
+        select: {
+          title: true,
+          assigneeId: true,
+          creatorId: true,
+          archivedAt: true,
+          jiraIssueKey: true,
+        },
       },
       feedbacks: { select: { authorId: true }, distinct: ["authorId"] },
     },
@@ -94,6 +101,13 @@ export async function createFeedback(
 
   revalidatePath(`/tasks/${pu.taskId}`)
   revalidatePath("/tasks")
+
+  // Jira sync：task 對應 issue 就 best-effort 寫一條 comment
+  if (pu.task.jiraIssueKey) {
+    const body = `[taskpulse｜${me.name} 回應] ${parsed.data.content}`
+    await addJiraComment(pu.task.jiraIssueKey, body)
+  }
+
   await notifyThread({
     taskId: pu.taskId,
     taskTitle: pu.task.title,
@@ -121,7 +135,7 @@ export async function createInitialAdminFeedback(
 
   const task = await prisma.task.findUnique({
     where: { id: taskId },
-    select: { id: true, title: true, assigneeId: true, archivedAt: true },
+    select: { id: true, title: true, assigneeId: true, archivedAt: true, jiraIssueKey: true },
   })
   if (!task) return { success: false, error: "找不到該任務" }
   if (task.archivedAt) return { success: false, error: "任務已封存，無法新增回饋" }
@@ -146,6 +160,11 @@ export async function createInitialAdminFeedback(
 
   revalidatePath("/tasks")
   revalidatePath(`/tasks/${taskId}`)
+  // Jira sync：admin 快速回饋寫進 Jira comment（內含主管原句）
+  if (task.jiraIssueKey) {
+    const body = `[taskpulse｜${admin.name} 主管快速回饋] ${parsed.data.content}`
+    await addJiraComment(task.jiraIssueKey, body)
+  }
   if (task.assigneeId !== admin.id) {
     await createNotification({
       recipientId: task.assigneeId,

@@ -382,6 +382,52 @@ export async function updateJiraIssueFromTask(p: JiraUpdatePayload): Promise<Jir
   }
 }
 
+// 寫一條 comment 到 Jira issue（POST /rest/api/3/issue/{key}/comment）
+// body 接純字串，內部會包成 ADF（Atlassian Document Format）
+// 失敗只 log 不丟例外，避免拖垮 taskpulse 原本的 progress/feedback 動作
+export async function addJiraComment(issueKey: string, body: string): Promise<void> {
+  if (!envConfigured()) return
+  const adminAccount = await prisma.account.findFirst({
+    where: { provider: "atlassian", user: { role: "admin" } },
+    select: { id: true, access_token: true, refresh_token: true, expires_at: true },
+  })
+  if (!adminAccount) return
+  const token = await ensureAccessToken(adminAccount)
+  if (!token) return
+  try {
+    const resources = await fetchAccessibleResources(token)
+    if (resources.length === 0) return
+    const { id: cloudId } = resources[0]
+    const url = `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/issue/${issueKey}/comment`
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        body: {
+          type: "doc",
+          version: 1,
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: body }],
+            },
+          ],
+        },
+      }),
+    })
+    if (!res.ok) {
+      const t = await res.text().catch(() => "")
+      console.warn(`[jira comment] ${issueKey} failed ${res.status} ${t.slice(0, 200)}`)
+    }
+  } catch (err) {
+    console.warn(`[jira comment] ${issueKey} threw`, err)
+  }
+}
+
 // 把 Jira issue 切換到「結案」或「重開」狀態
 // 因為每個 Jira project workflow 不同，沒辦法寫死 transition id
 // 解法：先 GET /transitions 看現在能去哪些狀態，比對名字（done/closed/resolved 或 reopen/to do/open）
