@@ -105,8 +105,9 @@ function CalendarCell({
   }
 
   return (
-    <div
-      className={`group relative flex h-16 flex-col justify-between rounded-md border px-1.5 py-1 sm:h-12 md:h-16 ${cellClass}`}
+    <Link
+      href={`/calendar/${event.date}`}
+      className={`group relative flex h-16 flex-col justify-between rounded-md border px-1.5 py-1 hover:border-border-default sm:h-12 md:h-16 ${cellClass}`}
     >
       <div className="flex items-start justify-between gap-1">
         <span className={`text-xs leading-none ${dayTextClass}`}>
@@ -123,7 +124,7 @@ function CalendarCell({
       {hasTasks && <CountBadge count={event.tasks.length} isOverdue={isOverdue} />}
 
       {hasTasks && <Tooltip event={event} />}
-    </div>
+    </Link>
   )
 }
 
