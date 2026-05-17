@@ -4,6 +4,7 @@ import Link from "next/link"
 import { fetchCalendarEvents } from "@/lib/calendar"
 import { prisma } from "@/lib/db"
 import { DashboardCalendar } from "./dashboard-calendar"
+import { DashboardJiraWidget } from "./dashboard-jira-widget"
 
 interface Props {
   user: { id: string; name: string }
@@ -60,6 +61,8 @@ export async function DashboardMember({ user }: Props) {
         </header>
 
         <DashboardCalendar events={calendar.events} todayKey={calendar.todayKey} />
+
+        <DashboardJiraWidget scope="mine" />
 
         <section className="space-y-3">
           <h2 className="text-sm font-medium text-text-secondary">我的任務</h2>

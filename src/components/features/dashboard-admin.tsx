@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db"
 import { ChartPeopleTasks } from "./chart-people-tasks"
 import { ChartUpdateFrequency } from "./chart-update-frequency"
 import { DashboardCalendar } from "./dashboard-calendar"
+import { DashboardJiraWidget } from "./dashboard-jira-widget"
 
 const WEEK_DAYS = 7
 const MS_PER_DAY = 24 * 60 * 60 * 1000
@@ -99,6 +100,8 @@ export async function DashboardAdmin() {
         </header>
 
         <DashboardCalendar events={calendar.events} todayKey={calendar.todayKey} />
+
+        <DashboardJiraWidget scope="team" />
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card title="每人活躍任務數" hint="未封存任務按 assignee 分組">
