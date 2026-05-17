@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { createNotification } from "@/lib/actions/notifications"
 import { getCurrentUser, requireAdmin } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
-import { createJiraIssueFromTask } from "@/lib/jira"
+import { createJiraIssueFromTask, transitionJiraIssue, updateJiraIssueFromTask } from "@/lib/jira"
 import { type TaskFormValues, taskFormSchema } from "@/lib/schemas/task"
 
 export type TaskActionResult =
@@ -58,6 +58,58 @@ export async function createTask(input: TaskFormValues): Promise<TaskActionResul
     })
   }
   return { success: true, data: { id: createdId } }
+}
+
+// 把 taskpulse task 編輯後的新值 PUT 到既有的 Jira issue
+// assigneeChanged 才會帶 assigneeEmail（少打一次 user/search lookup）
+async function pushTaskUpdateToJira(
+  taskId: string,
+  issueKey: string,
+  assigneeChanged: boolean,
+): Promise<void> {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: {
+      title: true,
+      description: true,
+      dueDate: true,
+      assignee: { select: { email: true } },
+    },
+  })
+  if (!task) return
+
+  const result = await updateJiraIssueFromTask({
+    issueKey,
+    title: task.title,
+    description: task.description,
+    dueDate: task.dueDate,
+    assigneeEmail: assigneeChanged ? task.assignee.email : undefined,
+  })
+
+  if (result.kind === "ok") {
+    await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        jiraSyncedAt: new Date(),
+        jiraSyncError: null,
+        jiraSyncAttempts: { increment: 1 },
+      },
+    })
+  } else {
+    const msg =
+      result.kind === "not_configured"
+        ? "Jira 整合尚未設定"
+        : result.kind === "not_connected"
+          ? "Admin 還沒連結 Atlassian"
+          : result.message
+    await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        jiraSyncError: msg,
+        jiraSyncAttempts: { increment: 1 },
+      },
+    })
+  }
 }
 
 // 推一筆 task 到 Jira 並寫回 sync state（成功 → jiraIssueKey/jiraSyncedAt；失敗 → jiraSyncError）
@@ -150,10 +202,10 @@ export async function updateTask(id: string, input: TaskFormValues): Promise<Tas
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? "驗證失敗" }
   }
-  // 先抓舊 assigneeId，看 update 後有沒有換人
+  // 先抓舊 assigneeId + jiraIssueKey，看 update 後要 PUT 已存在的 issue 還是 POST 新的
   const prev = await prisma.task.findUnique({
     where: { id },
-    select: { assigneeId: true },
+    select: { assigneeId: true, jiraIssueKey: true },
   })
   if (!prev) return { success: false, error: "找不到該任務" }
   try {
@@ -168,9 +220,19 @@ export async function updateTask(id: string, input: TaskFormValues): Promise<Tas
     }
     throw e
   }
+  // Jira sync：
+  // - 已同步過（有 jiraIssueKey）→ PUT 改 Jira
+  // - 從未成功同步 → 重新嘗試 POST（等同 retry）
+  // - 失敗都只記 jiraSyncError，不擋 taskpulse update
+  if (prev.jiraIssueKey) {
+    await pushTaskUpdateToJira(id, prev.jiraIssueKey, prev.assigneeId !== parsed.data.assigneeId)
+  } else {
+    await syncTaskToJira(id)
+  }
   revalidatePath("/tasks")
   revalidatePath(`/tasks/${id}`)
   revalidatePath(`/tasks/${id}/edit`)
+  revalidatePath("/")
   // assignee 換人才通知新 assignee
   if (parsed.data.assigneeId !== prev.assigneeId && parsed.data.assigneeId !== admin.id) {
     await createNotification({
@@ -200,16 +262,54 @@ export async function unarchiveTask(id: string): Promise<void> {
 
 export async function closeTask(id: string): Promise<void> {
   await requireAdmin()
-  await prisma.task.update({ where: { id }, data: { completedAt: new Date() } })
+  const task = await prisma.task.update({
+    where: { id },
+    data: { completedAt: new Date() },
+    select: { jiraIssueKey: true },
+  })
+  if (task.jiraIssueKey) await syncJiraTransitionFor(id, task.jiraIssueKey, "close")
   revalidatePath("/tasks")
   revalidatePath(`/tasks/${id}`)
+  revalidatePath("/")
 }
 
 export async function reopenTask(id: string): Promise<void> {
   await requireAdmin()
-  await prisma.task.update({ where: { id }, data: { completedAt: null } })
+  const task = await prisma.task.update({
+    where: { id },
+    data: { completedAt: null },
+    select: { jiraIssueKey: true },
+  })
+  if (task.jiraIssueKey) await syncJiraTransitionFor(id, task.jiraIssueKey, "reopen")
   revalidatePath("/tasks")
   revalidatePath(`/tasks/${id}`)
+  revalidatePath("/")
+}
+
+// 推 transition 到 Jira；結果寫回 jiraSyncedAt / jiraSyncError
+async function syncJiraTransitionFor(
+  taskId: string,
+  issueKey: string,
+  direction: "close" | "reopen",
+): Promise<void> {
+  const result = await transitionJiraIssue(issueKey, direction)
+  if (result.kind === "ok") {
+    await prisma.task.update({
+      where: { id: taskId },
+      data: { jiraSyncedAt: new Date(), jiraSyncError: null, jiraSyncAttempts: { increment: 1 } },
+    })
+  } else {
+    const msg =
+      result.kind === "not_configured"
+        ? "Jira 整合尚未設定"
+        : result.kind === "not_connected"
+          ? "Admin 還沒連結 Atlassian"
+          : result.message
+    await prisma.task.update({
+      where: { id: taskId },
+      data: { jiraSyncError: msg, jiraSyncAttempts: { increment: 1 } },
+    })
+  }
 }
 
 // Phase F - dashboard calendar drag-drop 用：把任務 dueDate 改成 dateKey 當天零點 (local time)
@@ -226,7 +326,7 @@ export async function updateTaskDueDate(
   const me = await getCurrentUser()
   const task = await prisma.task.findUnique({
     where: { id: taskId },
-    select: { id: true, assigneeId: true, archivedAt: true },
+    select: { id: true, assigneeId: true, archivedAt: true, jiraIssueKey: true },
   })
   if (!task) return { success: false, error: "找不到該任務" }
   if (task.archivedAt) return { success: false, error: "該任務已封存" }
@@ -247,6 +347,28 @@ export async function updateTaskDueDate(
   }
 
   await prisma.task.update({ where: { id: taskId }, data: { dueDate: newDueDate } })
+  // Jira sync：dueDate 變動推到 Jira（只更新 duedate 欄位）
+  if (task.jiraIssueKey) {
+    const result = await updateJiraIssueFromTask({
+      issueKey: task.jiraIssueKey,
+      dueDate: newDueDate,
+    })
+    await prisma.task.update({
+      where: { id: taskId },
+      data:
+        result.kind === "ok"
+          ? { jiraSyncedAt: new Date(), jiraSyncError: null, jiraSyncAttempts: { increment: 1 } }
+          : {
+              jiraSyncError:
+                result.kind === "error"
+                  ? result.message
+                  : result.kind === "not_configured"
+                    ? "Jira 整合尚未設定"
+                    : "Admin 還沒連結 Atlassian",
+              jiraSyncAttempts: { increment: 1 },
+            },
+    })
+  }
   revalidatePath("/")
   revalidatePath("/tasks")
   revalidatePath(`/tasks/${taskId}`)

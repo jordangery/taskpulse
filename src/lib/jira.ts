@@ -309,6 +309,162 @@ export async function createJiraIssueFromTask(p: JiraCreatePayload): Promise<Jir
   }
 }
 
+// Update existing Jira issue（PUT /rest/api/3/issue/{key}）
+// 只傳變動的 field；assignee 要 email → accountId lookup
+// 跟 create 一樣不丟例外，回 result 給 caller 寫 sync state
+export type JiraUpdatePayload = {
+  issueKey: string
+  title?: string
+  description?: string | null
+  dueDate?: Date | null
+  assigneeEmail?: string // 換人時填新人的 email
+}
+export type JiraUpdateResult =
+  | { kind: "not_configured" }
+  | { kind: "not_connected" }
+  | { kind: "ok" }
+  | { kind: "error"; message: string }
+
+export async function updateJiraIssueFromTask(p: JiraUpdatePayload): Promise<JiraUpdateResult> {
+  if (!envConfigured()) return { kind: "not_configured" }
+  const adminAccount = await prisma.account.findFirst({
+    where: { provider: "atlassian", user: { role: "admin" } },
+    select: { id: true, access_token: true, refresh_token: true, expires_at: true },
+  })
+  if (!adminAccount) return { kind: "not_connected" }
+  const token = await ensureAccessToken(adminAccount)
+  if (!token) return { kind: "error", message: "Admin Atlassian token 失效" }
+  try {
+    const resources = await fetchAccessibleResources(token)
+    if (resources.length === 0)
+      return { kind: "error", message: "Admin 沒任何 accessible Jira site" }
+    const { id: cloudId } = resources[0]
+
+    // 拼 fields object（只填 caller 真的有給的欄位）
+    const fields: Record<string, unknown> = {}
+    if (p.title !== undefined) fields.summary = p.title
+    if (p.description !== undefined) {
+      fields.description = p.description
+        ? {
+            type: "doc",
+            version: 1,
+            content: [{ type: "paragraph", content: [{ type: "text", text: p.description }] }],
+          }
+        : null
+    }
+    if (p.dueDate !== undefined) fields.duedate = p.dueDate ? toJiraDateKey(p.dueDate) : null
+    if (p.assigneeEmail) {
+      const accountId = await lookupAccountId(token, cloudId, p.assigneeEmail)
+      // 找不到 accountId → 取消指派；別讓整個 update 失敗
+      fields.assignee = accountId ? { accountId } : null
+    }
+
+    if (Object.keys(fields).length === 0) return { kind: "ok" } // nothing to send
+
+    const url = `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/issue/${p.issueKey}`
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ fields }),
+    })
+    // Jira 回 204 No Content；非 2xx 都當失敗
+    if (!res.ok) {
+      const text = await res.text().catch(() => "")
+      return { kind: "error", message: `${res.status} ${text.slice(0, 300)}` }
+    }
+    return { kind: "ok" }
+  } catch (err) {
+    return { kind: "error", message: err instanceof Error ? err.message : "未知錯誤" }
+  }
+}
+
+// 把 Jira issue 切換到「結案」或「重開」狀態
+// 因為每個 Jira project workflow 不同，沒辦法寫死 transition id
+// 解法：先 GET /transitions 看現在能去哪些狀態，比對名字（done/closed/resolved 或 reopen/to do/open）
+// 找到第一個 match 的 transition.id 再 POST
+// 找不到任何匹配 transition → 回 error（不會悄悄沒做）
+export type JiraTransitionDirection = "close" | "reopen"
+export type JiraTransitionResult =
+  | { kind: "not_configured" }
+  | { kind: "not_connected" }
+  | { kind: "ok"; transitionName: string }
+  | { kind: "error"; message: string }
+
+const CLOSE_KEYWORDS = /done|closed|resolved|complete|finish/i
+const REOPEN_KEYWORDS = /reopen|to ?do|open|backlog|in progress/i
+
+export async function transitionJiraIssue(
+  issueKey: string,
+  direction: JiraTransitionDirection,
+): Promise<JiraTransitionResult> {
+  if (!envConfigured()) return { kind: "not_configured" }
+  const adminAccount = await prisma.account.findFirst({
+    where: { provider: "atlassian", user: { role: "admin" } },
+    select: { id: true, access_token: true, refresh_token: true, expires_at: true },
+  })
+  if (!adminAccount) return { kind: "not_connected" }
+  const token = await ensureAccessToken(adminAccount)
+  if (!token) return { kind: "error", message: "Admin Atlassian token 失效" }
+  try {
+    const resources = await fetchAccessibleResources(token)
+    if (resources.length === 0)
+      return { kind: "error", message: "Admin 沒任何 accessible Jira site" }
+    const { id: cloudId } = resources[0]
+
+    // 1. 看這張 issue 現在可走的 transitions
+    const listRes = await fetch(
+      `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/issue/${issueKey}/transitions`,
+      {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        cache: "no-store",
+      },
+    )
+    if (!listRes.ok) {
+      const t = await listRes.text().catch(() => "")
+      return { kind: "error", message: `transitions ${listRes.status} ${t.slice(0, 200)}` }
+    }
+    const list = (await listRes.json()) as {
+      transitions?: Array<{ id: string; name: string; to?: { name?: string } }>
+    }
+    const re = direction === "close" ? CLOSE_KEYWORDS : REOPEN_KEYWORDS
+    const match = list.transitions?.find(
+      (t) => re.test(t.name) || (t.to?.name ? re.test(t.to.name) : false),
+    )
+    if (!match) {
+      const avail = list.transitions?.map((t) => t.name).join(", ") ?? "(none)"
+      return {
+        kind: "error",
+        message: `找不到對應 transition（要 ${direction}），可用：${avail}`,
+      }
+    }
+
+    // 2. POST transition
+    const postRes = await fetch(
+      `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/issue/${issueKey}/transitions`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ transition: { id: match.id } }),
+      },
+    )
+    if (!postRes.ok) {
+      const t = await postRes.text().catch(() => "")
+      return { kind: "error", message: `transition ${postRes.status} ${t.slice(0, 200)}` }
+    }
+    return { kind: "ok", transitionName: match.name }
+  } catch (err) {
+    return { kind: "error", message: err instanceof Error ? err.message : "未知錯誤" }
+  }
+}
+
 // 拿第一個 admin 看得到的 project key（簡單 MVP；多 project 環境之後加 settings 選）
 async function fetchFirstProjectKey(token: string, cloudId: string): Promise<string | null> {
   const url = `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/project/search?maxResults=1`
