@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation"
 import { ProgressUpdateForm } from "@/components/features/progress-update-form"
 import { ProgressUpdateList } from "@/components/features/progress-update-list"
 import { createProgressUpdate } from "@/lib/actions/progress-updates"
-import { archiveTask, unarchiveTask } from "@/lib/actions/tasks"
+import { archiveTask, closeTask, reopenTask, unarchiveTask } from "@/lib/actions/tasks"
 import { getCurrentUser } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
 
@@ -52,6 +52,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
 
   const isAdmin = me.role === "admin"
   const isArchived = task.archivedAt !== null
+  const isCompleted = task.completedAt !== null
   // 任何能看到此頁的人都能寫進度（member 限自己的、admin 任何）；封存任務除外
   const canWriteUpdate = !isArchived
   const lastMineAt = task.updates.find((u) => u.author.id === me.id)?.createdAt ?? null
@@ -75,6 +76,24 @@ export default async function TaskDetailPage({ params }: PageProps) {
                     編輯
                   </Link>
                 )}
+                {!isArchived && (
+                  <form
+                    action={
+                      isCompleted ? reopenTask.bind(null, task.id) : closeTask.bind(null, task.id)
+                    }
+                  >
+                    <button
+                      type="submit"
+                      className={
+                        isCompleted
+                          ? "rounded-md border border-border-subtle bg-canvas px-3 py-1.5 text-xs text-text-secondary hover:bg-subtle hover:text-text-primary"
+                          : "rounded-md bg-success-subtle px-3 py-1.5 text-xs text-success hover:bg-success hover:text-text-inverse"
+                      }
+                    >
+                      {isCompleted ? "重新開啟" : "結案"}
+                    </button>
+                  </form>
+                )}
                 <form
                   action={
                     isArchived ? unarchiveTask.bind(null, task.id) : archiveTask.bind(null, task.id)
@@ -94,6 +113,11 @@ export default async function TaskDetailPage({ params }: PageProps) {
               </div>
             )}
           </div>
+          {isCompleted && (
+            <p className="text-xs text-success">
+              已結案於 {task.completedAt?.toLocaleString("zh-TW")}
+            </p>
+          )}
           {isArchived && (
             <p className="text-xs text-warning">
               已封存於 {task.archivedAt?.toLocaleString("zh-TW")}

@@ -52,12 +52,14 @@ model Task {
   dueDate       DateTime?
   createdAt     DateTime         @default(now())
   archivedAt    DateTime?
+  completedAt   DateTime?
 
   updates       ProgressUpdate[]
   notifications Notification[]
 
   @@index([assigneeId])
   @@index([archivedAt])
+  @@index([completedAt])
 }
 
 // 進度摘要：append-only 歷史紀錄

@@ -3,7 +3,11 @@ import { formatDistanceToNow } from "date-fns"
 import { zhTW } from "date-fns/locale"
 import Link from "next/link"
 import { FeedbackSection } from "@/components/features/feedback-section"
-import { type SortValue, TaskListFilters } from "@/components/features/task-list-filters"
+import {
+  type ShowValue,
+  type SortValue,
+  TaskListFilters,
+} from "@/components/features/task-list-filters"
 import { TaskQuickFeedback } from "@/components/features/task-quick-feedback"
 import { archiveTask, unarchiveTask } from "@/lib/actions/tasks"
 import { getCurrentUser } from "@/lib/current-user"
@@ -15,6 +19,7 @@ interface SearchParams {
   status?: string
   overdue?: string
   sort?: SortValue
+  show?: ShowValue
 }
 
 interface PageProps {
@@ -30,6 +35,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
   const statusFilter = params.status?.trim() || ""
   const overdueOnly = params.overdue === "1"
   const sort = (params.sort ?? "created") as SortValue
+  const show = (params.show ?? "active") as ShowValue
 
   // 角色切換：admin 看全部、member 只看自己被指派的（未封存）
   const baseWhere: Prisma.TaskWhereInput = isAdmin ? {} : { assigneeId: me.id }
@@ -43,6 +49,13 @@ export default async function TasksPage({ searchParams }: PageProps) {
   if (overdueOnly) {
     baseWhere.dueDate = { lt: new Date(), not: null }
   }
+  // 結案過濾：預設只看活躍（completedAt null），可切「已結案」/「全部」
+  if (show === "active") {
+    baseWhere.completedAt = null
+  } else if (show === "closed") {
+    baseWhere.completedAt = { not: null }
+  }
+  // show === "all" → 不加條件
 
   // 排序：created (default desc) / due (asc, nulls last) / activity (JS 端排，需 query 完再算)
   const orderBy: Prisma.TaskOrderByWithRelationInput =
@@ -112,7 +125,14 @@ export default async function TasksPage({ searchParams }: PageProps) {
       })
     : undefined
 
-  const hasFilters = !!(q || assigneeFilter || statusFilter || overdueOnly || sort !== "created")
+  const hasFilters = !!(
+    q ||
+    assigneeFilter ||
+    statusFilter ||
+    overdueOnly ||
+    sort !== "created" ||
+    show !== "active"
+  )
 
   return (
     <div className="flex flex-1 flex-col px-6 py-6">
@@ -195,6 +215,7 @@ interface TaskCardData {
   dueDate: Date | null
   createdAt: Date
   archivedAt: Date | null
+  completedAt: Date | null
   assignee: { id: string; name: string; role: "admin" | "member" }
   updates: Array<{
     id: string
@@ -222,16 +243,19 @@ function TaskCard({
     latest?.summary && latest.summary.length > 60
       ? `${latest.summary.slice(0, 60)}…`
       : latest?.summary
+  const isCompleted = task.completedAt !== null
   // 該 task 是否允許回應：未封存 + 使用者跟 task 有關（assignee / creator / admin）
   const canReplyOnTask =
     !archived && (isAdmin || currentUserId === task.assigneeId || currentUserId === task.creatorId)
 
+  // 封存：完全淡化、不 hover；結案：淡化但仍可 hover 互動
+  const cardClass = archived
+    ? "opacity-60"
+    : isCompleted
+      ? "opacity-60 hover:border-border-default"
+      : "hover:border-border-default"
   return (
-    <article
-      className={`rounded-md border border-border-subtle bg-surface px-4 py-4 ${
-        archived ? "opacity-60" : "hover:border-border-default"
-      }`}
-    >
+    <article className={`rounded-md border border-border-subtle bg-surface px-4 py-4 ${cardClass}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <Link
@@ -254,6 +278,7 @@ function TaskCard({
             {latest && latest._count.feedbacks > 0 && (
               <span className="text-accent">💬 {latest._count.feedbacks} 則回應</span>
             )}
+            {isCompleted && <span className="text-success">✓ 已結案</span>}
           </div>
 
           {latest && (

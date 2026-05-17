@@ -21,6 +21,14 @@ export const SORT_OPTIONS = [
 
 export type SortValue = (typeof SORT_OPTIONS)[number]["value"]
 
+export const SHOW_OPTIONS = [
+  { value: "active", label: "活躍（預設）" },
+  { value: "closed", label: "已結案" },
+  { value: "all", label: "全部" },
+] as const
+
+export type ShowValue = (typeof SHOW_OPTIONS)[number]["value"]
+
 export function TaskListFilters({ assignees }: TaskListFiltersProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -33,6 +41,7 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
   const [status, setStatus] = useState(searchParams.get("status") ?? "")
   const [overdue, setOverdue] = useState(searchParams.get("overdue") === "1")
   const [sort, setSort] = useState<SortValue>((searchParams.get("sort") as SortValue) || "created")
+  const [show, setShow] = useState<ShowValue>((searchParams.get("show") as ShowValue) || "active")
 
   // URL 變動同步回 state（瀏覽器上下一頁等情境）
   useEffect(() => {
@@ -41,6 +50,7 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
     setStatus(searchParams.get("status") ?? "")
     setOverdue(searchParams.get("overdue") === "1")
     setSort((searchParams.get("sort") as SortValue) || "created")
+    setShow((searchParams.get("show") as ShowValue) || "active")
   }, [searchParams])
 
   function pushUrl(next: {
@@ -49,6 +59,7 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
     status?: string
     overdue?: boolean
     sort?: SortValue
+    show?: ShowValue
   }) {
     const params = new URLSearchParams()
     if (next.q && next.q.length > 0) params.set("q", next.q)
@@ -56,6 +67,7 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
     if (next.status && next.status.length > 0) params.set("status", next.status)
     if (next.overdue) params.set("overdue", "1")
     if (next.sort && next.sort !== "created") params.set("sort", next.sort)
+    if (next.show && next.show !== "active") params.set("show", next.show)
     const qs = params.toString()
     startTransition(() => {
       router.push(qs ? `${pathname}?${qs}` : pathname)
@@ -68,12 +80,12 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
     const currentInUrl = searchParams.get("q") ?? ""
     if (q === currentInUrl) return
     const t = setTimeout(() => {
-      pushUrl({ q, assignee, status, overdue, sort })
+      pushUrl({ q, assignee, status, overdue, sort, show })
     }, 350)
     return () => clearTimeout(t)
   }, [q])
 
-  const hasAnyFilter = q || assignee || status || overdue || sort !== "created"
+  const hasAnyFilter = q || assignee || status || overdue || sort !== "created" || show !== "active"
 
   return (
     <div className="mb-4 rounded-md border border-border-subtle bg-surface px-4 py-3">
@@ -90,7 +102,7 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
             value={assignee}
             onChange={(e) => {
               setAssignee(e.target.value)
-              pushUrl({ q, assignee: e.target.value, status, overdue, sort })
+              pushUrl({ q, assignee: e.target.value, status, overdue, sort, show })
             }}
             className="rounded-md border border-border-default bg-canvas px-3 py-1.5 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
           >
@@ -106,7 +118,7 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
           value={status}
           onChange={(e) => {
             setStatus(e.target.value)
-            pushUrl({ q, assignee, status: e.target.value, overdue, sort })
+            pushUrl({ q, assignee, status: e.target.value, overdue, sort, show })
           }}
           className="rounded-md border border-border-default bg-canvas px-3 py-1.5 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
         >
@@ -123,7 +135,7 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
             checked={overdue}
             onChange={(e) => {
               setOverdue(e.target.checked)
-              pushUrl({ q, assignee, status, overdue: e.target.checked, sort })
+              pushUrl({ q, assignee, status, overdue: e.target.checked, sort, show })
             }}
             className="accent-accent"
           />
@@ -134,11 +146,27 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
           onChange={(e) => {
             const newSort = e.target.value as SortValue
             setSort(newSort)
-            pushUrl({ q, assignee, status, overdue, sort: newSort })
+            pushUrl({ q, assignee, status, overdue, sort: newSort, show })
           }}
           className="rounded-md border border-border-default bg-canvas px-3 py-1.5 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
         >
           {SORT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={show}
+          onChange={(e) => {
+            const newShow = e.target.value as ShowValue
+            setShow(newShow)
+            pushUrl({ q, assignee, status, overdue, sort, show: newShow })
+          }}
+          aria-label="顯示狀態"
+          className="rounded-md border border-border-default bg-canvas px-3 py-1.5 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
+        >
+          {SHOW_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
@@ -153,7 +181,15 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
               setStatus("")
               setOverdue(false)
               setSort("created")
-              pushUrl({ q: "", assignee: "", status: "", overdue: false, sort: "created" })
+              setShow("active")
+              pushUrl({
+                q: "",
+                assignee: "",
+                status: "",
+                overdue: false,
+                sort: "created",
+                show: "active",
+              })
             }}
             className="text-xs text-text-tertiary hover:text-text-secondary"
           >

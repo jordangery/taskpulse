@@ -109,3 +109,17 @@ export async function unarchiveTask(id: string): Promise<void> {
   revalidatePath("/tasks")
   revalidatePath(`/tasks/${id}`)
 }
+
+export async function closeTask(id: string): Promise<void> {
+  await requireAdmin()
+  await prisma.task.update({ where: { id }, data: { completedAt: new Date() } })
+  revalidatePath("/tasks")
+  revalidatePath(`/tasks/${id}`)
+}
+
+export async function reopenTask(id: string): Promise<void> {
+  await requireAdmin()
+  await prisma.task.update({ where: { id }, data: { completedAt: null } })
+  revalidatePath("/tasks")
+  revalidatePath(`/tasks/${id}`)
+}
