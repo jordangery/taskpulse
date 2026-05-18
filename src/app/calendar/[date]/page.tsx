@@ -18,6 +18,8 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { getCurrentUser } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
+import { fetchMyJiraIssues, fetchTeamJiraIssues, type JiraIssue } from "@/lib/jira"
+import { bucketDefFor, bucketIdFor } from "@/lib/jira-buckets"
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
@@ -59,9 +61,11 @@ export default async function CalendarDatePage({ params }: PageProps) {
   const nextDay = new Date(target)
   nextDay.setDate(nextDay.getDate() + 1)
 
-  const tasks = await prisma.task.findMany({
+  // taskpulse offline 記事（沒同步到 Jira 的才在這顯示，避免和下面 Jira 列表重複）
+  const taskPromise = prisma.task.findMany({
     where: {
       archivedAt: null,
+      jiraIssueKey: null,
       dueDate: { gte: target, lt: nextDay },
       ...(isAdmin ? {} : { assigneeId: me.id }),
     },
@@ -72,15 +76,18 @@ export default async function CalendarDatePage({ params }: PageProps) {
       updates: {
         take: 1,
         orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          summary: true,
-          status: true,
-          createdAt: true,
-        },
+        select: { id: true, summary: true, status: true, createdAt: true },
       },
     },
   })
+  const jiraPromise = isAdmin ? fetchTeamJiraIssues() : fetchMyJiraIssues(me.id)
+  const [tasks, jiraResult] = await Promise.all([taskPromise, jiraPromise])
+
+  // 只挑 dueDate 落在當天 + 非已完成的 Jira 票
+  const jiraIssues: JiraIssue[] =
+    jiraResult.kind === "ok"
+      ? jiraResult.issues.filter((i) => i.dueDate === dateKey && bucketIdFor(i.status) !== "done")
+      : []
 
   // 用於相對標籤的「今天」也走 local time、startOfDay
   const now = new Date()
@@ -103,22 +110,39 @@ export default async function CalendarDatePage({ params }: PageProps) {
             </span>
           </div>
           <p className="text-sm text-text-secondary">
-            {tasks.length > 0
-              ? isAdmin
-                ? `全隊有 ${tasks.length} 筆任務在此日到期`
-                : `指派給你的有 ${tasks.length} 筆任務在此日到期`
+            {tasks.length + jiraIssues.length > 0
+              ? `Jira ${jiraIssues.length} 張｜離線記事 ${tasks.length} 筆 在此日到期`
               : "今日無到期任務"}
           </p>
         </header>
 
-        {tasks.length === 0 ? (
+        {tasks.length + jiraIssues.length === 0 ? (
           <EmptyState dateTitle={dateTitle} />
         ) : (
-          <section className="space-y-3">
-            {tasks.map((task) => (
-              <TaskCard key={task.id} task={task} />
-            ))}
-          </section>
+          <div className="space-y-6">
+            {jiraIssues.length > 0 && (
+              <section>
+                <h2 className="mb-3 text-sm font-medium text-text-secondary">Jira 票</h2>
+                <div className="space-y-2">
+                  {jiraIssues.map((issue) => (
+                    <JiraCard key={issue.key} issue={issue} />
+                  ))}
+                </div>
+              </section>
+            )}
+            {tasks.length > 0 && (
+              <section>
+                <h2 className="mb-3 text-sm font-medium text-text-secondary">
+                  離線記事（還沒升級到 Jira）
+                </h2>
+                <div className="space-y-2">
+                  {tasks.map((task) => (
+                    <TaskCard key={task.id} task={task} />
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -174,6 +198,23 @@ function TaskCard({ task }: { task: CardTask }) {
           <p className="mt-3 text-xs text-text-tertiary">尚無進度</p>
         )}
       </div>
+    </article>
+  )
+}
+
+function JiraCard({ issue }: { issue: JiraIssue }) {
+  const b = bucketDefFor(issue.status)
+  return (
+    <article className="rounded-md border border-border-subtle bg-surface px-4 py-3 hover:border-border-default">
+      <a href={issue.url} target="_blank" rel="noreferrer" className="block min-w-0">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-mono font-medium text-accent">{issue.key}</span>
+          <span className={`rounded-full px-2 py-0.5 ${b.cls}`}>{issue.status}</span>
+          {issue.priority && <span className="text-text-tertiary">{issue.priority}</span>}
+          <span className="text-text-tertiary">指派 {issue.assigneeName}</span>
+        </div>
+        <p className="mt-1 text-sm text-text-primary">{issue.summary}</p>
+      </a>
     </article>
   )
 }

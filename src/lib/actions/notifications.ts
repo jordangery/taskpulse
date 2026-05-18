@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache"
 import { getCurrentUser } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
+import { fetchMyJiraIssues } from "@/lib/jira"
+import { bucketIdFor } from "@/lib/jira-buckets"
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const DUE_SOON_THRESHOLD_MS = 1 * MS_PER_DAY // 24 小時內到期 = 快逾期警告
@@ -48,23 +50,33 @@ export interface DueWarning {
   dueDate: Date
   link: string
   overdue: boolean
+  source: "task" | "jira"
+  jiraKey?: string
 }
 
-// live 計算：assignee 或 creator 名下 24h 內到期或已逾期的任務
+// live 計算：24h 內到期或已逾期的事項，包含：
+// 1. taskpulse offline Task（jiraIssueKey IS NULL，避免和下面 Jira 重複）
+// 2. Jira 票（assignee=自己 + 非已完成）
 // 不寫進 Notification 表（無 cron 環境難避免重複塞）；count 跟列表都靠 query
 export async function fetchDueWarnings(userId: string): Promise<DueWarning[]> {
   const now = new Date()
   const horizon = new Date(now.getTime() + DUE_SOON_THRESHOLD_MS)
-  const tasks = await prisma.task.findMany({
+
+  const tasksPromise = prisma.task.findMany({
     where: {
       archivedAt: null,
+      jiraIssueKey: null,
       dueDate: { lte: horizon, not: null },
       OR: [{ assigneeId: userId }, { creatorId: userId }],
     },
     select: { id: true, title: true, dueDate: true },
     orderBy: { dueDate: "asc" },
   })
-  return tasks
+  const jiraPromise = fetchMyJiraIssues(userId)
+
+  const [tasks, jira] = await Promise.all([tasksPromise, jiraPromise])
+
+  const warnings: DueWarning[] = tasks
     .filter((t): t is { id: string; title: string; dueDate: Date } => t.dueDate !== null)
     .map((t) => ({
       taskId: t.id,
@@ -72,7 +84,44 @@ export async function fetchDueWarnings(userId: string): Promise<DueWarning[]> {
       dueDate: t.dueDate,
       link: `/tasks/${t.id}`,
       overdue: t.dueDate.getTime() < now.getTime(),
+      source: "task" as const,
     }))
+
+  if (jira.kind === "ok") {
+    for (const issue of jira.issues) {
+      if (!issue.dueDate) continue
+      if (bucketIdFor(issue.status) === "done") continue
+      const due = parseJiraDateKey(issue.dueDate)
+      if (!due) continue
+      if (due.getTime() > horizon.getTime()) continue
+      warnings.push({
+        taskId: issue.key, // 借用欄位，UI 端用 source 判斷怎麼處理
+        title: issue.summary,
+        dueDate: due,
+        link: issue.url, // 連到 Jira browse URL
+        overdue: due.getTime() < now.getTime(),
+        source: "jira",
+        jiraKey: issue.key,
+      })
+    }
+  }
+
+  // 依 dueDate 由近到遠排序
+  warnings.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())
+  return warnings
+}
+
+function parseJiraDateKey(key: string): Date | null {
+  const m = key.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return null
+  const y = Number(m[1])
+  const mo = Number(m[2])
+  const d = Number(m[3])
+  const date = new Date(y, mo - 1, d, 0, 0, 0, 0)
+  if (date.getFullYear() !== y || date.getMonth() !== mo - 1 || date.getDate() !== d) {
+    return null
+  }
+  return date
 }
 
 export interface NotificationListItem {

@@ -42,9 +42,14 @@ export function NotificationBell({ unreadCount, recent, dueWarnings }: Notificat
     })
   }
 
-  const handleClickDueWarning = (link: string) => {
+  const handleClickDueWarning = (link: string, isExternal: boolean) => {
     setOpen(false)
-    router.push(link)
+    if (isExternal) {
+      // Jira browse URL → 開新分頁，避免 router.push 把外部網址當 next route
+      window.open(link, "_blank", "noopener,noreferrer")
+    } else {
+      router.push(link)
+    }
   }
 
   const handleMarkAll = () => {
@@ -91,10 +96,10 @@ export function NotificationBell({ unreadCount, recent, dueWarnings }: Notificat
           ) : (
             <ul className="max-h-96 divide-y divide-border-subtle overflow-y-auto">
               {dueWarnings.map((w) => (
-                <li key={`due-${w.taskId}`}>
+                <li key={`due-${w.source}-${w.taskId}`}>
                   <button
                     type="button"
-                    onClick={() => handleClickDueWarning(w.link)}
+                    onClick={() => handleClickDueWarning(w.link, w.source === "jira")}
                     className="block w-full px-4 py-3 text-left hover:bg-subtle focus:bg-subtle focus:outline-none"
                   >
                     <div className="flex items-start gap-2">
@@ -109,7 +114,13 @@ export function NotificationBell({ unreadCount, recent, dueWarnings }: Notificat
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm text-text-primary">
-                          任務「{w.title}」{w.overdue ? "已過期限" : "24 小時內到期"}
+                          {w.source === "jira" && (
+                            <span className="mr-1 font-mono text-xs text-accent">{w.jiraKey}</span>
+                          )}
+                          {w.source === "jira" ? "" : "任務「"}
+                          {w.title}
+                          {w.source === "jira" ? "" : "」"}
+                          {w.overdue ? " 已過期限" : " 24 小時內到期"}
                         </p>
                         <p className="mt-0.5 text-xs text-text-tertiary">
                           截止 {w.dueDate.toLocaleDateString("zh-TW")}

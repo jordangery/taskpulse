@@ -27,7 +27,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useCallback, useState, useTransition } from "react"
 import { updateTaskDueDate } from "@/lib/actions/tasks"
-import type { CalendarEvent } from "@/lib/calendar"
+import type { CalendarEvent, CalendarItem } from "@/lib/calendar"
 
 interface Props {
   events: CalendarEvent[]
@@ -64,7 +64,7 @@ export function DashboardCalendar({ events, todayKey }: Props) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [, startTransition] = useTransition()
 
-  const totalTasks = events.reduce((sum, e) => sum + e.tasks.length, 0)
+  const totalTasks = events.reduce((sum, e) => sum + e.items.length, 0)
 
   const weekStartIdx = findWeekViewStartIndex(events, todayKey)
   const visibleEvents = view === "month" ? events : events.slice(weekStartIdx, weekStartIdx + 7)
@@ -114,7 +114,7 @@ export function DashboardCalendar({ events, todayKey }: Props) {
           <p className="text-xs text-text-tertiary">
             {view === "month"
               ? `${totalTasks} 個任務在這 4 週到期`
-              : `${visibleEvents.reduce((s, e) => s + e.tasks.length, 0)} 個任務本週到期`}
+              : `${visibleEvents.reduce((s, e) => s + e.items.length, 0)} 個任務本週到期`}
           </p>
           <ViewToggle view={view} onChange={setView} />
         </div>
@@ -227,9 +227,9 @@ function CalendarCell({
   onDropOnCell,
   onDropHover,
 }: CellProps) {
-  const hasTasks = event.tasks.length > 0
+  const hasTasks = event.items.length > 0
   const isPast = event.date < todayKey
-  const isOverdue = isPast && hasTasks && event.tasks.some((t) => t.overdue)
+  const isOverdue = isPast && hasTasks && event.items.some((t) => t.overdue)
   const parts = event.date.split("-").map(Number)
   const month = parts[1]
   const day = parts[2]
@@ -260,7 +260,7 @@ function CalendarCell({
       role="button"
       tabIndex={hasTasks ? 0 : -1}
       aria-label={
-        hasTasks ? `${event.date}，${event.tasks.length} 個任務，點擊展開` : `${event.date}，無任務`
+        hasTasks ? `${event.date}，${event.items.length} 個任務，點擊展開` : `${event.date}，無任務`
       }
       aria-expanded={isTooltipOpen}
       aria-disabled={!hasTasks}
@@ -323,7 +323,7 @@ function CalendarCell({
         </span>
       )}
 
-      {hasTasks && <CountBadge count={event.tasks.length} isOverdue={isOverdue} />}
+      {hasTasks && <CountBadge count={event.items.length} isOverdue={isOverdue} />}
 
       {hasTasks && isTooltipOpen && (
         <Tooltip
@@ -371,8 +371,8 @@ function Tooltip({
   onTaskDragStart: (taskId: string) => void
   onTaskDragEnd: () => void
 }) {
-  const visible = event.tasks.slice(0, MAX_TOOLTIP_TASKS)
-  const extra = event.tasks.length - visible.length
+  const visible = event.items.slice(0, MAX_TOOLTIP_TASKS)
+  const extra = event.items.length - visible.length
 
   return (
     <div
@@ -382,30 +382,75 @@ function Tooltip({
     >
       <p className="mb-1 text-[10px] uppercase tracking-wide text-text-tertiary">{event.date}</p>
       <ul className="space-y-1">
-        {visible.map((task) => {
-          const isDragging = draggingTaskId === task.id
-          return (
-            <li
-              key={task.id}
-              className={`flex cursor-grab flex-col gap-0.5 rounded-sm text-xs active:cursor-grabbing ${
-                isDragging ? "opacity-50" : "hover:bg-subtle"
-              }`}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData(DRAG_MIME, task.id)
-                e.dataTransfer.effectAllowed = "move"
-                onTaskDragStart(task.id)
-              }}
-              onDragEnd={() => onTaskDragEnd()}
-              title="拖到其他格子改截止日"
-            >
-              <span className="line-clamp-2 text-text-primary">{task.title}</span>
-              <span className="text-[10px] text-text-tertiary">{task.assigneeName}</span>
-            </li>
-          )
-        })}
+        {visible.map((item) => (
+          <TooltipItem
+            key={item.id}
+            item={item}
+            isDragging={draggingTaskId === item.taskId}
+            onTaskDragStart={onTaskDragStart}
+            onTaskDragEnd={onTaskDragEnd}
+          />
+        ))}
       </ul>
       {extra > 0 && <p className="mt-1 text-[10px] text-text-tertiary">等 {extra} 個…</p>}
     </div>
+  )
+}
+
+// Tooltip 內單筆事項：
+//   source=task → 可拖（改 dueDate），標「離線」
+//   source=jira → 不可拖（要去 Jira 編），點開外部 Jira URL，標 issue key
+function TooltipItem({
+  item,
+  isDragging,
+  onTaskDragStart,
+  onTaskDragEnd,
+}: {
+  item: CalendarItem
+  isDragging: boolean
+  onTaskDragStart: (taskId: string) => void
+  onTaskDragEnd: () => void
+}) {
+  if (item.source === "task" && item.taskId) {
+    const taskId = item.taskId
+    return (
+      <li
+        className={`flex cursor-grab flex-col gap-0.5 rounded-sm text-xs active:cursor-grabbing ${
+          isDragging ? "opacity-50" : "hover:bg-subtle"
+        }`}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData(DRAG_MIME, taskId)
+          e.dataTransfer.effectAllowed = "move"
+          onTaskDragStart(taskId)
+        }}
+        onDragEnd={() => onTaskDragEnd()}
+        title="拖到其他格子改截止日"
+      >
+        <div className="flex items-center gap-1">
+          <span className="rounded-full bg-warning-subtle px-1 text-[9px] text-warning">離線</span>
+          <span className="line-clamp-2 flex-1 text-text-primary">{item.title}</span>
+        </div>
+        <span className="text-[10px] text-text-tertiary">{item.assigneeName}</span>
+      </li>
+    )
+  }
+  // Jira issue
+  return (
+    <li className="flex flex-col gap-0.5 rounded-sm text-xs hover:bg-subtle">
+      <a
+        href={item.url}
+        target="_blank"
+        rel="noreferrer"
+        className="flex items-center gap-1"
+        title="開啟 Jira"
+      >
+        <span className="rounded-full bg-success-subtle px-1 font-mono text-[9px] text-success">
+          {item.jiraKey ?? "JIRA"}
+        </span>
+        <span className="line-clamp-2 flex-1 text-text-primary">{item.title}</span>
+      </a>
+      <span className="text-[10px] text-text-tertiary">{item.assigneeName}</span>
+    </li>
   )
 }
