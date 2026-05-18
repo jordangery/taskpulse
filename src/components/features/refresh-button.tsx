@@ -1,24 +1,36 @@
 "use client"
 
-// 通用 refresh button —— 觸發 router.refresh() 重跑 server component
-// dashboard Jira widget 用，避免使用者得 F5 整頁
-// 撈取中會 disable + 換 spinner 文字（純 emoji，不引入 icon 套件）
+// 通用 refresh button —— server action revalidatePath + 至少 300ms 可見 pending 狀態
+//
+// 之前用 router.refresh() 但它是 fire-and-forget，pending 立刻 false，使用者看不到反應；
+// 改成 await server action 後 Next.js 會等 RSC 重撈完才 resolve，pending 期間 disable + 顯示「撈取中…」
 
-import { useRouter } from "next/navigation"
 import { useTransition } from "react"
+import { revalidateDashboard } from "@/lib/actions/refresh"
 
 interface Props {
   title?: string
   className?: string
 }
 
+const MIN_VISIBLE_MS = 300
+
 export function RefreshButton({ title = "重新撈取", className }: Props) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   return (
     <button
       type="button"
-      onClick={() => startTransition(() => router.refresh())}
+      onClick={() =>
+        startTransition(async () => {
+          const startedAt = Date.now()
+          await revalidateDashboard()
+          // 保證至少 300ms pending 狀態，讓使用者看得到「撈取中…」回饋
+          const elapsed = Date.now() - startedAt
+          if (elapsed < MIN_VISIBLE_MS) {
+            await new Promise((r) => setTimeout(r, MIN_VISIBLE_MS - elapsed))
+          }
+        })
+      }
       disabled={pending}
       title={title}
       aria-label={title}
