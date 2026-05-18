@@ -8,6 +8,7 @@
 import { requireUser } from "@/lib/current-user"
 import { fetchMyJiraIssues, fetchTeamJiraIssues } from "@/lib/jira"
 import { JiraIssueList } from "./dashboard-jira-issue-list"
+import { RefreshButton } from "./refresh-button"
 
 interface Props {
   scope: "mine" | "team"
@@ -23,7 +24,7 @@ export async function DashboardJiraWidget({ scope }: Props) {
 
   return (
     <article className="rounded-md border border-border-subtle bg-surface px-5 py-4">
-      <header className="mb-3 flex items-baseline justify-between">
+      <header className="mb-3 flex items-baseline justify-between gap-2">
         <div>
           <h2 className="text-sm font-medium text-text-primary">Jira</h2>
           <p className="mt-0.5 text-xs text-text-tertiary">
@@ -32,9 +33,12 @@ export async function DashboardJiraWidget({ scope }: Props) {
               : "你在 Atlassian 被指派的 Jira 票"}
           </p>
         </div>
-        {result.kind === "ok" && (
-          <p className="text-xs text-text-tertiary">{result.issues.length} 張</p>
-        )}
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {result.kind === "ok" && (
+            <p className="text-xs text-text-tertiary">{result.issues.length} 張</p>
+          )}
+          <RefreshButton title="重新撈 Jira" />
+        </div>
       </header>
 
       <Body scope={scope} result={result} />
