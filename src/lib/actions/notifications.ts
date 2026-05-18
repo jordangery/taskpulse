@@ -67,7 +67,7 @@ export async function fetchDueWarnings(userId: string): Promise<DueWarning[]> {
       archivedAt: null,
       jiraIssueKey: null,
       dueDate: { lte: horizon, not: null },
-      OR: [{ assigneeId: userId }, { creatorId: userId }],
+      OR: [{ assignees: { some: { userId } } }, { creatorId: userId }],
     },
     select: { id: true, title: true, dueDate: true },
     orderBy: { dueDate: "asc" },

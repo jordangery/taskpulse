@@ -31,7 +31,7 @@ export async function createProgressUpdate(
     select: {
       id: true,
       title: true,
-      assigneeId: true,
+      assignees: { select: { userId: true } },
       creatorId: true,
       archivedAt: true,
       jiraIssueKey: true,
@@ -39,7 +39,8 @@ export async function createProgressUpdate(
   })
   if (!task) return { success: false, error: "找不到該任務" }
   if (task.archivedAt) return { success: false, error: "任務已封存，無法新增進度" }
-  if (me.role !== "admin" && task.assigneeId !== me.id) {
+  const isAssignee = task.assignees.some((a) => a.userId === me.id)
+  if (me.role !== "admin" && !isAssignee) {
     return { success: false, error: "你不是這個任務的負責人" }
   }
 

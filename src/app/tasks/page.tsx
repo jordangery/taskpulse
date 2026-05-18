@@ -3,6 +3,7 @@ import { formatDistanceToNow } from "date-fns"
 import { zhTW } from "date-fns/locale"
 import Link from "next/link"
 import { FeedbackSection } from "@/components/features/feedback-section"
+import { TaskCreateModal } from "@/components/features/task-create-modal"
 import {
   type ShowValue,
   type SortValue,
@@ -42,14 +43,16 @@ export default async function TasksPage({ searchParams }: PageProps) {
   const sort = (params.sort ?? "created") as SortValue
   const show = (params.show ?? "offline") as ShowValue
 
-  // 角色切換：admin 看全部、member 只看自己被指派的（未封存）
-  const baseWhere: Prisma.TaskWhereInput = isAdmin ? {} : { assigneeId: me.id }
+  // 角色切換：admin 看全部、member 只看自己被指派到的（many-to-many：assignees.some(userId=me)）
+  const baseWhere: Prisma.TaskWhereInput = isAdmin ? {} : { assignees: { some: { userId: me.id } } }
   // 搜尋：標題 + 描述
   if (q) {
     baseWhere.OR = [{ title: { contains: q } }, { description: { contains: q } }]
   }
   // assignee 過濾（admin only — member 已被 baseWhere 鎖死自己）
-  if (isAdmin && assigneeFilter) baseWhere.assigneeId = assigneeFilter
+  if (isAdmin && assigneeFilter) {
+    baseWhere.assignees = { some: { userId: assigneeFilter } }
+  }
   // 逾期過濾
   if (overdueOnly) {
     baseWhere.dueDate = { lt: new Date(), not: null }
@@ -77,7 +80,10 @@ export default async function TasksPage({ searchParams }: PageProps) {
     where: { ...baseWhere, archivedAt: null },
     orderBy,
     include: {
-      assignee: { select: { id: true, name: true, role: true } },
+      assignees: {
+        orderBy: { createdAt: "asc" },
+        select: { user: { select: { id: true, name: true, role: true } } },
+      },
       updates: {
         take: 1,
         orderBy: { createdAt: "desc" },
@@ -109,7 +115,10 @@ export default async function TasksPage({ searchParams }: PageProps) {
         where: { archivedAt: { not: null } },
         orderBy: { archivedAt: "desc" },
         include: {
-          assignee: { select: { id: true, name: true, role: true } },
+          assignees: {
+            orderBy: { createdAt: "asc" },
+            select: { user: { select: { id: true, name: true, role: true } } },
+          },
         },
       })
     : []
@@ -129,11 +138,12 @@ export default async function TasksPage({ searchParams }: PageProps) {
       : filteredActive
 
   // admin 看到全成員下拉；未封存的成員才放
+  // 帶 role 給 TaskCreateModal 用（TaskForm 內顯示「主管」徽章）
   const assignees = isAdmin
     ? await prisma.user.findMany({
         where: { archivedAt: null },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
+        select: { id: true, name: true, role: true },
+        orderBy: [{ role: "asc" }, { name: "asc" }],
       })
     : undefined
 
@@ -163,14 +173,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
                   : `你的離線記事 ${active.length} 筆`}
             </p>
           </div>
-          {isAdmin && (
-            <Link
-              href="/tasks/new"
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-text hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              新增任務
-            </Link>
-          )}
+          {isAdmin && assignees && <TaskCreateModal assignees={assignees} />}
         </header>
 
         <TaskListFilters assignees={assignees} />
@@ -225,7 +228,6 @@ interface FeedbackOnLatest {
 interface TaskCardData {
   id: string
   title: string
-  assigneeId: string
   creatorId: string
   dueDate: Date | null
   createdAt: Date
@@ -233,7 +235,8 @@ interface TaskCardData {
   completedAt: Date | null
   jiraIssueKey: string | null
   jiraSyncError: string | null
-  assignee: { id: string; name: string; role: "admin" | "member" }
+  // 多人指派：array，依 createdAt asc 排（第一位 = primary）
+  assignees: { user: { id: string; name: string; role: "admin" | "member" } }[]
   updates: Array<{
     id: string
     summary: string
@@ -261,9 +264,10 @@ function TaskCard({
       ? `${latest.summary.slice(0, 60)}…`
       : latest?.summary
   const isCompleted = task.completedAt !== null
-  // 該 task 是否允許回應：未封存 + 使用者跟 task 有關（assignee / creator / admin）
-  const canReplyOnTask =
-    !archived && (isAdmin || currentUserId === task.assigneeId || currentUserId === task.creatorId)
+  const assigneeNames = task.assignees.map((a) => a.user.name).join(" / ") || "未指派"
+  const isAssignee = task.assignees.some((a) => a.user.id === currentUserId)
+  // 該 task 是否允許回應：未封存 + 使用者跟 task 有關（任一 assignee / creator / admin）
+  const canReplyOnTask = !archived && (isAdmin || isAssignee || currentUserId === task.creatorId)
 
   // 封存：完全淡化、不 hover；結案：淡化但仍可 hover 互動
   const cardClass = archived
@@ -300,7 +304,7 @@ function TaskCard({
             )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-tertiary">
-            <span>指派 {task.assignee.name}</span>
+            <span>指派 {assigneeNames}</span>
             {task.dueDate && <span>截止 {task.dueDate.toLocaleDateString("zh-TW")}</span>}
             {latest ? (
               <span>

@@ -16,20 +16,20 @@ export type FeedbackActionResult =
   | { success: true; data: { id: string } }
   | { success: false; error: string }
 
-// 通知留言串所有參與者（task creator + progress author + 過往留言作者），actor 自己不收
+// 通知留言串所有參與者（task creator + 所有 assignees + progress author + 過往留言作者），actor 自己不收
 async function notifyThread(args: {
   taskId: string
   taskTitle: string
   progressAuthorId: string
   taskCreatorId: string
-  taskAssigneeId: string
+  taskAssigneeIds: string[]
   existingAuthorIds: string[]
   actorId: string
   actorName: string
 }) {
   const recipients = new Set<string>()
   recipients.add(args.taskCreatorId)
-  recipients.add(args.taskAssigneeId)
+  for (const id of args.taskAssigneeIds) recipients.add(id)
   recipients.add(args.progressAuthorId)
   for (const id of args.existingAuthorIds) recipients.add(id)
   recipients.delete(args.actorId)
@@ -67,7 +67,7 @@ export async function createFeedback(
       task: {
         select: {
           title: true,
-          assigneeId: true,
+          assignees: { select: { userId: true } },
           creatorId: true,
           archivedAt: true,
           jiraIssueKey: true,
@@ -79,11 +79,12 @@ export async function createFeedback(
   if (!pu) return { success: false, error: "找不到該進度" }
   if (pu.task.archivedAt) return { success: false, error: "任務已封存，無法留言" }
 
-  // 權限：admin / task assignee / task creator / 已參與留言串的人 都可以回
+  // 權限：admin / 任一 task assignee / task creator / progress 作者 / 已參與留言串的人
   const hasCommented = pu.feedbacks.some((f) => f.authorId === me.id)
+  const isAssignee = pu.task.assignees.some((a) => a.userId === me.id)
   const canReply =
     me.role === "admin" ||
-    me.id === pu.task.assigneeId ||
+    isAssignee ||
     me.id === pu.task.creatorId ||
     me.id === pu.authorId ||
     hasCommented
@@ -113,7 +114,7 @@ export async function createFeedback(
     taskTitle: pu.task.title,
     progressAuthorId: pu.authorId,
     taskCreatorId: pu.task.creatorId,
-    taskAssigneeId: pu.task.assigneeId,
+    taskAssigneeIds: pu.task.assignees.map((a) => a.userId),
     existingAuthorIds: pu.feedbacks.map((f) => f.authorId),
     actorId: me.id,
     actorName: me.name,
@@ -135,7 +136,13 @@ export async function createInitialAdminFeedback(
 
   const task = await prisma.task.findUnique({
     where: { id: taskId },
-    select: { id: true, title: true, assigneeId: true, archivedAt: true, jiraIssueKey: true },
+    select: {
+      id: true,
+      title: true,
+      assignees: { select: { userId: true } },
+      archivedAt: true,
+      jiraIssueKey: true,
+    },
   })
   if (!task) return { success: false, error: "找不到該任務" }
   if (task.archivedAt) return { success: false, error: "任務已封存，無法新增回饋" }
@@ -165,9 +172,11 @@ export async function createInitialAdminFeedback(
     const body = `[taskpulse｜${admin.name} 主管快速回饋] ${parsed.data.content}`
     await addJiraComment(task.jiraIssueKey, body)
   }
-  if (task.assigneeId !== admin.id) {
+  // 通知所有 assignees（admin 自己不重複收）
+  for (const a of task.assignees) {
+    if (a.userId === admin.id) continue
     await createNotification({
-      recipientId: task.assigneeId,
+      recipientId: a.userId,
       type: "feedback_received",
       taskId,
       message: `${admin.name} 對「${task.title}」開了快速回饋串`,
@@ -202,7 +211,7 @@ export async function updateFeedback(
     progressUpdate: {
       taskId: string
       authorId: string
-      task: { title: string; assigneeId: string; creatorId: string }
+      task: { title: string; assignees: { userId: string }[]; creatorId: string }
       feedbacks: { authorId: string }[]
     }
   }
@@ -216,7 +225,13 @@ export async function updateFeedback(
           select: {
             taskId: true,
             authorId: true,
-            task: { select: { title: true, assigneeId: true, creatorId: true } },
+            task: {
+              select: {
+                title: true,
+                assignees: { select: { userId: true } },
+                creatorId: true,
+              },
+            },
             feedbacks: { select: { authorId: true }, distinct: ["authorId"] },
           },
         },
@@ -236,7 +251,7 @@ export async function updateFeedback(
     taskTitle: updated.progressUpdate.task.title,
     progressAuthorId: updated.progressUpdate.authorId,
     taskCreatorId: updated.progressUpdate.task.creatorId,
-    taskAssigneeId: updated.progressUpdate.task.assigneeId,
+    taskAssigneeIds: updated.progressUpdate.task.assignees.map((a) => a.userId),
     existingAuthorIds: updated.progressUpdate.feedbacks.map((f) => f.authorId),
     actorId: me.id,
     actorName: me.name,

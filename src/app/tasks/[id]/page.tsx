@@ -27,7 +27,10 @@ export default async function TaskDetailPage({ params }: PageProps) {
   const task = await prisma.task.findUnique({
     where: { id },
     include: {
-      assignee: { select: { id: true, name: true, role: true } },
+      assignees: {
+        orderBy: { createdAt: "asc" },
+        select: { user: { select: { id: true, name: true, role: true } } },
+      },
       creator: { select: { id: true, name: true } },
       updates: {
         orderBy: { createdAt: "desc" },
@@ -55,7 +58,8 @@ export default async function TaskDetailPage({ params }: PageProps) {
   if (!task) notFound()
 
   // member 只能看自己被指派的；admin 看全部
-  if (me.role !== "admin" && task.assigneeId !== me.id) redirect("/tasks")
+  const isAssignee = task.assignees.some((a) => a.user.id === me.id)
+  if (me.role !== "admin" && !isAssignee) redirect("/tasks")
 
   const isAdmin = me.role === "admin"
   const isArchived = task.archivedAt !== null
@@ -137,7 +141,10 @@ export default async function TaskDetailPage({ params }: PageProps) {
 
         <section className="rounded-md border border-border-subtle bg-surface px-5 py-4">
           <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-            <Meta label="指派給" value={task.assignee.name} />
+            <Meta
+              label="指派給"
+              value={task.assignees.map((a) => a.user.name).join(" / ") || "未指派"}
+            />
             <Meta label="建立者" value={task.creator.name} />
             <Meta
               label="截止日"

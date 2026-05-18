@@ -14,13 +14,18 @@ export default async function EditTaskPage({ params }: PageProps) {
   if (me.role !== "admin") redirect("/tasks")
 
   const { id } = await params
-  const task = await prisma.task.findUnique({ where: { id } })
+  const task = await prisma.task.findUnique({
+    where: { id },
+    include: {
+      assignees: { orderBy: { createdAt: "asc" }, select: { userId: true } },
+    },
+  })
   if (!task) notFound()
 
   const assignees = await prisma.user.findMany({
     where: { archivedAt: null },
     select: { id: true, name: true, role: true },
-    orderBy: { name: "asc" },
+    orderBy: [{ role: "asc" }, { name: "asc" }],
   })
 
   const boundAction = updateTask.bind(null, task.id)
@@ -44,7 +49,7 @@ export default async function EditTaskPage({ params }: PageProps) {
           defaultValues={{
             title: task.title,
             description: task.description ?? "",
-            assigneeId: task.assigneeId,
+            assigneeIds: task.assignees.map((a) => a.userId),
             dueDate: task.dueDate ? task.dueDate.toISOString().slice(0, 10) : "",
           }}
           onSuccessRedirect={`/tasks/${task.id}`}

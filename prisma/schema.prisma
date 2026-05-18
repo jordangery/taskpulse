@@ -32,7 +32,7 @@ model User {
   sessions      Session[]
 
   // 關聯
-  assignedTasks Task[]           @relation("Assignee")
+  assignedTasks TaskAssignee[]   // 一個 user 可能被分派到多個 task（many-to-many via TaskAssignee）
   createdTasks  Task[]           @relation("Creator")
   updates       ProgressUpdate[]
   feedbacks     Feedback[]
@@ -63,8 +63,9 @@ model Task {
   id            String           @id @default(cuid())
   title         String
   description   String?
-  assigneeId    String
-  assignee      User             @relation("Assignee", fields: [assigneeId], references: [id])
+  // 多人指派：透過 TaskAssignee join table，taskpulse 端把每位 assignee 視為平等的工作擁有者
+  // Jira sync 時用「第一位」作為 Jira issue 的 assignee（Jira 只支援單一 assignee）
+  assignees     TaskAssignee[]
   creatorId     String
   creator       User             @relation("Creator", fields: [creatorId], references: [id])
   dueDate       DateTime?
@@ -85,10 +86,22 @@ model Task {
   updates       ProgressUpdate[]
   notifications Notification[]
 
-  @@index([assigneeId])
   @@index([archivedAt])
   @@index([completedAt])
   @@index([jiraIssueKey])
+}
+
+// Task ↔ User many-to-many（多人指派）
+// 順序由 createdAt asc 還原：先選的人視為 primary assignee（Jira sync 時用）
+model TaskAssignee {
+  taskId    String
+  userId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@id([taskId, userId])
+  @@index([userId])
 }
 
 // 進度摘要：append-only 歷史紀錄

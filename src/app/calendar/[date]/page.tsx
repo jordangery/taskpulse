@@ -68,11 +68,14 @@ export default async function CalendarDatePage({ params }: PageProps) {
       archivedAt: null,
       jiraIssueKey: null,
       dueDate: { gte: target, lt: nextDay },
-      ...(isAdmin ? {} : { assigneeId: me.id }),
+      ...(isAdmin ? {} : { assignees: { some: { userId: me.id } } }),
     },
     orderBy: [{ completedAt: { sort: "asc", nulls: "first" } }, { createdAt: "desc" }],
     include: {
-      assignee: { select: { id: true, name: true } },
+      assignees: {
+        orderBy: { createdAt: "asc" },
+        select: { user: { select: { id: true, name: true } } },
+      },
       creator: { select: { id: true, name: true } },
       updates: {
         take: 1,
@@ -168,7 +171,7 @@ interface CardTask {
   id: string
   title: string
   completedAt: Date | null
-  assignee: { id: string; name: string }
+  assignees: { user: { id: string; name: string } }[]
   creator: { id: string; name: string }
   updates: Array<{
     id: string
@@ -199,7 +202,7 @@ function TaskCard({ task }: { task: CardTask }) {
           {task.title}
         </Link>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-tertiary">
-          <span>指派 {task.assignee.name}</span>
+          <span>指派 {task.assignees.map((a) => a.user.name).join(" / ") || "未指派"}</span>
           <span>建立者 {task.creator.name}</span>
           {isCompleted && <span className="text-success">✓ 已結案</span>}
         </div>

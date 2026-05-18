@@ -64,13 +64,18 @@ export async function fetchCalendarEvents(userId: string, isAdmin: boolean): Pro
       archivedAt: null,
       jiraIssueKey: null,
       dueDate: { gte: start, lt: end },
-      ...(isAdmin ? {} : { assigneeId: userId }),
+      // member 只看自己被指派到的：assignees 內含 userId
+      ...(isAdmin ? {} : { assignees: { some: { userId } } }),
     },
     select: {
       id: true,
       title: true,
       dueDate: true,
-      assignee: { select: { name: true } },
+      // 全部 assignees，UI 端組成 "Alice / Bob / Carol" 顯示
+      assignees: {
+        orderBy: { createdAt: "asc" },
+        select: { user: { select: { name: true } } },
+      },
     },
     orderBy: { dueDate: "asc" },
   })
@@ -104,11 +109,19 @@ export async function fetchCalendarEvents(userId: string, isAdmin: boolean): Pro
     const key = toLocalKey(t.dueDate)
     const slot = buckets.get(key)
     if (!slot) continue
+    // 多 assignee 顯示成 "Alice + 2" 之類
+    const names = t.assignees.map((a) => a.user.name)
+    const display =
+      names.length === 0
+        ? "未指派"
+        : names.length === 1
+          ? names[0]
+          : `${names[0]} +${names.length - 1}`
     slot.push({
       id: `task:${t.id}`,
       taskId: t.id,
       title: t.title,
-      assigneeName: t.assignee.name,
+      assigneeName: display,
       overdue: t.dueDate < today,
       source: "task",
     })

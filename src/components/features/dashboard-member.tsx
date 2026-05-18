@@ -14,7 +14,11 @@ export async function DashboardMember({ user }: Props) {
   const [tasks, latestFeedbacks, calendar] = await Promise.all([
     // 只顯示「離線記事」（還沒同步到 Jira 的 Task），符合 Task = offline buffer 心智模型
     prisma.task.findMany({
-      where: { assigneeId: user.id, archivedAt: null, jiraIssueKey: null },
+      where: {
+        assignees: { some: { userId: user.id } },
+        archivedAt: null,
+        jiraIssueKey: null,
+      },
       orderBy: { createdAt: "desc" },
       include: {
         updates: {
@@ -31,7 +35,7 @@ export async function DashboardMember({ user }: Props) {
       orderBy: { updatedAt: "desc" },
       where: {
         authorId: { not: user.id },
-        progressUpdate: { task: { assigneeId: user.id } },
+        progressUpdate: { task: { assignees: { some: { userId: user.id } } } },
       },
       select: {
         id: true,

@@ -12,12 +12,11 @@ export type TaskActionResult =
   | { success: true; data: { id: string } }
   | { success: false; error: string }
 
-// 把 RHF form values 轉成 prisma 寫入用的 shape
-function normalizeFormValues(input: TaskFormValues) {
+// 把 RHF form values 轉成 prisma 寫入用的 shape（不含 assignees，那邊 nested write 分開處理）
+function normalizeScalarFields(input: TaskFormValues) {
   return {
     title: input.title,
     description: input.description && input.description.length > 0 ? input.description : null,
-    assigneeId: input.assigneeId,
     dueDate: input.dueDate && input.dueDate.length > 0 ? new Date(input.dueDate) : null,
   }
 }
@@ -28,12 +27,17 @@ export async function createTask(input: TaskFormValues): Promise<TaskActionResul
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? "驗證失敗" }
   }
+  const { assigneeIds } = parsed.data
   let createdId: string
   try {
     const task = await prisma.task.create({
       data: {
-        ...normalizeFormValues(parsed.data),
+        ...normalizeScalarFields(parsed.data),
         creatorId: admin.id,
+        // 用 nested create 一次塞所有 assignees；順序依 input 陣列（先送進來的 createdAt 較早）
+        assignees: {
+          create: assigneeIds.map((userId) => ({ userId })),
+        },
       },
     })
     createdId = task.id
@@ -47,10 +51,11 @@ export async function createTask(input: TaskFormValues): Promise<TaskActionResul
   await syncTaskToJira(createdId)
   revalidatePath("/tasks")
   revalidatePath("/")
-  // 通知被指派的 member（admin 自己指派自己不通知）
-  if (parsed.data.assigneeId !== admin.id) {
+  // 通知所有被指派的 member（admin 自己被指派也不通知自己）
+  for (const recipientId of assigneeIds) {
+    if (recipientId === admin.id) continue
     await createNotification({
-      recipientId: parsed.data.assigneeId,
+      recipientId,
       type: "task_assigned",
       taskId: createdId,
       message: `${admin.name} 指派任務「${parsed.data.title}」給你`,
@@ -62,6 +67,7 @@ export async function createTask(input: TaskFormValues): Promise<TaskActionResul
 
 // 把 taskpulse task 編輯後的新值 PUT 到既有的 Jira issue
 // assigneeChanged 才會帶 assigneeEmail（少打一次 user/search lookup）
+// 多人 assignee：Jira 只接受 single assignee → 用「第一位」（順序由 TaskAssignee.createdAt asc）
 async function pushTaskUpdateToJira(
   taskId: string,
   issueKey: string,
@@ -73,17 +79,21 @@ async function pushTaskUpdateToJira(
       title: true,
       description: true,
       dueDate: true,
-      assignee: { select: { email: true } },
+      assignees: {
+        orderBy: { createdAt: "asc" },
+        select: { user: { select: { email: true } } },
+      },
     },
   })
   if (!task) return
+  const primaryEmail = task.assignees[0]?.user.email
 
   const result = await updateJiraIssueFromTask({
     issueKey,
     title: task.title,
     description: task.description,
     dueDate: task.dueDate,
-    assigneeEmail: assigneeChanged ? task.assignee.email : undefined,
+    assigneeEmail: assigneeChanged && primaryEmail ? primaryEmail : undefined,
   })
 
   if (result.kind === "ok") {
@@ -122,17 +132,22 @@ async function syncTaskToJira(taskId: string): Promise<void> {
       description: true,
       dueDate: true,
       jiraIssueKey: true,
-      assignee: { select: { email: true } },
+      assignees: {
+        orderBy: { createdAt: "asc" },
+        select: { user: { select: { email: true } } },
+      },
     },
   })
   if (!task) return
   if (task.jiraIssueKey) return // 已同步過，避免重複建
+  const primaryEmail = task.assignees[0]?.user.email
+  if (!primaryEmail) return // 沒 assignee 不推
 
   const result = await createJiraIssueFromTask({
     title: task.title,
     description: task.description,
     dueDate: task.dueDate,
-    assigneeEmail: task.assignee.email,
+    assigneeEmail: primaryEmail,
   })
 
   if (result.kind === "ok") {
@@ -202,17 +217,37 @@ export async function updateTask(id: string, input: TaskFormValues): Promise<Tas
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? "驗證失敗" }
   }
-  // 先抓舊 assigneeId + jiraIssueKey，看 update 後要 PUT 已存在的 issue 還是 POST 新的
+  const { assigneeIds } = parsed.data
+
+  // 先抓舊 assignees + jiraIssueKey，看 update 後要 PUT 已存在的 issue 還是 POST 新的
+  // assignee 變動：算 set 差集；有差就視為「改派」，通知新加入的人 + Jira PUT 帶新 primary
   const prev = await prisma.task.findUnique({
     where: { id },
-    select: { assigneeId: true, jiraIssueKey: true },
+    select: {
+      jiraIssueKey: true,
+      assignees: { orderBy: { createdAt: "asc" }, select: { userId: true } },
+    },
   })
   if (!prev) return { success: false, error: "找不到該任務" }
+  const prevAssigneeIds = prev.assignees.map((a) => a.userId)
+  const prevPrimary = prevAssigneeIds[0]
+  const newPrimary = assigneeIds[0]
+  const primaryChanged = prevPrimary !== newPrimary
+  const addedAssignees = assigneeIds.filter((id) => !prevAssigneeIds.includes(id))
+
   try {
-    await prisma.task.update({
-      where: { id },
-      data: normalizeFormValues(parsed.data),
-    })
+    // 用 transaction 確保 scalar + assignees 一起更新（避免中途失敗留下半舊半新狀態）
+    await prisma.$transaction([
+      prisma.task.update({
+        where: { id },
+        data: normalizeScalarFields(parsed.data),
+      }),
+      // 簡單做法：先清空再重建（同步順序、tasks 不多）；保留 createdAt 順序則要 diff
+      prisma.taskAssignee.deleteMany({ where: { taskId: id } }),
+      prisma.taskAssignee.createMany({
+        data: assigneeIds.map((userId) => ({ taskId: id, userId })),
+      }),
+    ])
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError) {
       if (e.code === "P2025") return { success: false, error: "找不到該任務" }
@@ -221,11 +256,11 @@ export async function updateTask(id: string, input: TaskFormValues): Promise<Tas
     throw e
   }
   // Jira sync：
-  // - 已同步過（有 jiraIssueKey）→ PUT 改 Jira
+  // - 已同步過（有 jiraIssueKey）→ PUT 改 Jira（primary 變動才推 assignee）
   // - 從未成功同步 → 重新嘗試 POST（等同 retry）
   // - 失敗都只記 jiraSyncError，不擋 taskpulse update
   if (prev.jiraIssueKey) {
-    await pushTaskUpdateToJira(id, prev.jiraIssueKey, prev.assigneeId !== parsed.data.assigneeId)
+    await pushTaskUpdateToJira(id, prev.jiraIssueKey, primaryChanged)
   } else {
     await syncTaskToJira(id)
   }
@@ -233,13 +268,14 @@ export async function updateTask(id: string, input: TaskFormValues): Promise<Tas
   revalidatePath(`/tasks/${id}`)
   revalidatePath(`/tasks/${id}/edit`)
   revalidatePath("/")
-  // assignee 換人才通知新 assignee
-  if (parsed.data.assigneeId !== prev.assigneeId && parsed.data.assigneeId !== admin.id) {
+  // 通知「新加入」的 assignee（已經在的不重新通知；admin 自己也不通知）
+  for (const recipientId of addedAssignees) {
+    if (recipientId === admin.id) continue
     await createNotification({
-      recipientId: parsed.data.assigneeId,
+      recipientId,
       type: "task_assigned",
       taskId: id,
-      message: `${admin.name} 把任務「${parsed.data.title}」轉派給你`,
+      message: `${admin.name} 把任務「${parsed.data.title}」指派給你`,
       link: `/tasks/${id}`,
     })
   }
@@ -313,7 +349,7 @@ async function syncJiraTransitionFor(
 }
 
 // Phase F - dashboard calendar drag-drop 用：把任務 dueDate 改成 dateKey 當天零點 (local time)
-// 權限：admin 可以拖任何任務；member 只能拖自己被指派的（assigneeId === me.id）
+// 權限：admin 可以拖任何任務；member 只能拖自己「被指派到的」（在 assignees 內）
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 export async function updateTaskDueDate(
@@ -326,11 +362,17 @@ export async function updateTaskDueDate(
   const me = await getCurrentUser()
   const task = await prisma.task.findUnique({
     where: { id: taskId },
-    select: { id: true, assigneeId: true, archivedAt: true, jiraIssueKey: true },
+    select: {
+      id: true,
+      archivedAt: true,
+      jiraIssueKey: true,
+      assignees: { select: { userId: true } },
+    },
   })
   if (!task) return { success: false, error: "找不到該任務" }
   if (task.archivedAt) return { success: false, error: "該任務已封存" }
-  if (me.role !== "admin" && task.assigneeId !== me.id) {
+  const isAssignee = task.assignees.some((a) => a.userId === me.id)
+  if (me.role !== "admin" && !isAssignee) {
     return { success: false, error: "沒有權限變更這個任務" }
   }
 
