@@ -106,11 +106,18 @@ export default async function ReportsPage() {
   }
 
   // 依 project 票數由多到少排
-  const projects: ProjectReport[] = Array.from(byProject.entries())
+  const allProjects: ProjectReport[] = Array.from(byProject.entries())
     .sort((a, b) => b[1].length - a[1].length)
     .map(([pk, list]) => buildProjectReport(pk, list, { today, weekStart }))
 
-  // 全體總覽（多 project 時才有意義）
+  // 沒有「卡住 / 已逾期 / 本週完成」任何一筆的 project 不出現在報告
+  // （想看完整列表去 Jira 自己看；報告只列「需要回報的事」）
+  const projects = allProjects.filter(
+    (p) => p.blocked.length + p.overdue.length + p.doneThisWeek.length > 0,
+  )
+  const skippedProjects = allProjects.length - projects.length
+
+  // 全體總覽（多 project 時才有意義；數字用 projects 過濾後的 = 跟下面卡片一致）
   const overall = {
     inProgress: projects.reduce((s, p) => s + p.inProgress.length, 0),
     blocked: projects.reduce((s, p) => s + p.blocked.length, 0),
@@ -128,7 +135,10 @@ export default async function ReportsPage() {
           <div>
             <h1 className="text-2xl font-semibold text-text-primary">向上回報摘要</h1>
             <p className="mt-1 text-sm text-text-secondary">
-              近 7 天｜Jira 視角｜admin 專用｜共 {projects.length} 個專案 / {issues.length} 張票
+              近 7 天｜Jira 視角｜admin 專用｜{projects.length} 個專案要回報
+              {skippedProjects > 0 && (
+                <span className="ml-1 text-text-tertiary">（{skippedProjects} 個沒事略過）</span>
+              )}
               {jiraResult.kind !== "ok" && (
                 <span className="ml-2 text-warning">
                   {jiraResult.kind === "not_configured"
@@ -214,10 +224,6 @@ function ProjectCard({ report: p }: { report: ProjectReport }) {
       {p.overdue.length > 0 && <SubSection title="已逾期的票" issues={p.overdue} tone="danger" />}
       {p.doneThisWeek.length > 0 && (
         <SubSection title="本週完成的票" issues={p.doneThisWeek} tone="success" compact />
-      )}
-
-      {p.blocked.length === 0 && p.overdue.length === 0 && p.doneThisWeek.length === 0 && (
-        <p className="text-xs text-text-tertiary">這個 project 本週沒有需要關注的票 👌</p>
       )}
     </article>
   )
