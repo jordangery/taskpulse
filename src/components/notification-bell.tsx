@@ -94,7 +94,7 @@ export function NotificationBell({ unreadCount, recent, dueWarnings }: Notificat
           {totalShown === 0 ? (
             <div className="px-4 py-6 text-center text-sm text-text-tertiary">沒有新通知</div>
           ) : (
-            <ul className="max-h-96 divide-y divide-border-subtle overflow-y-auto">
+            <ul className="scrollbar-subtle max-h-96 divide-y divide-border-subtle overflow-y-auto">
               {dueWarnings.map((w) => (
                 <li key={`due-${w.source}-${w.taskId}`}>
                   <button

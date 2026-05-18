@@ -93,7 +93,7 @@ function ListView({
         })}
       </div>
 
-      <ul className="max-h-96 space-y-1 overflow-y-auto pr-1">
+      <ul className="scrollbar-subtle max-h-96 space-y-1 overflow-y-auto pr-1">
         {filtered.length === 0 ? (
           <li className="py-4 text-center text-xs text-text-tertiary">這個狀態目前沒有票</li>
         ) : (
@@ -180,7 +180,7 @@ function KanbanColumn({
         <span>{label}</span>
         <span className="opacity-75">{count}</span>
       </header>
-      <ul className="flex max-h-80 flex-col gap-1.5 overflow-y-auto p-2">
+      <ul className="scrollbar-subtle flex max-h-80 flex-col gap-1.5 overflow-y-auto p-2">
         {items.length === 0 ? (
           <li className="py-3 text-center text-[11px] text-text-tertiary">—</li>
         ) : (
