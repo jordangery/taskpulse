@@ -207,11 +207,13 @@ function ProjectCard({ report: p }: { report: ProjectReport }) {
         <StatTile label="已逾期" value={p.overdue.length} tone="warning" />
       </div>
 
-      {/* 三段 issue 列表，空的不渲染整段（減少視覺雜訊） */}
+      {/* 三段 issue 列表，空的不渲染整段（減少視覺雜訊）
+       * 卡住 / 已逾期 = 需要關注，用詳細 row
+       * 本週完成 = 已過去的成果報告，用 compact 單行 row + scroll，避免列表把整頁拉長 */}
       {p.blocked.length > 0 && <SubSection title="卡住的票" issues={p.blocked} tone="warning" />}
       {p.overdue.length > 0 && <SubSection title="已逾期的票" issues={p.overdue} tone="danger" />}
       {p.doneThisWeek.length > 0 && (
-        <SubSection title="本週完成的票" issues={p.doneThisWeek} tone="success" />
+        <SubSection title="本週完成的票" issues={p.doneThisWeek} tone="success" compact />
       )}
 
       {p.blocked.length === 0 && p.overdue.length === 0 && p.doneThisWeek.length === 0 && (
@@ -225,22 +227,50 @@ function SubSection({
   title,
   issues,
   tone,
+  compact = false,
 }: {
   title: string
   issues: JiraIssue[]
   tone: "warning" | "success" | "danger"
+  // compact = 單行 row + max-h 捲動（給「本週完成」這類量大但每筆都已 done 不必細看的）
+  compact?: boolean
 }) {
   return (
     <section className="mb-3 last:mb-0">
       <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-tertiary">
         {title}（{issues.length}）
       </h3>
-      <ul className="space-y-2">
-        {issues.map((i) => (
-          <JiraRow key={i.key} issue={i} tone={tone} />
-        ))}
-      </ul>
+      {compact ? (
+        <ul className="scrollbar-subtle max-h-48 space-y-1 overflow-y-auto rounded-md border border-border-subtle bg-canvas px-2 py-1">
+          {issues.map((i) => (
+            <CompactJiraRow key={i.key} issue={i} />
+          ))}
+        </ul>
+      ) : (
+        <ul className="space-y-2">
+          {issues.map((i) => (
+            <JiraRow key={i.key} issue={i} tone={tone} />
+          ))}
+        </ul>
+      )}
     </section>
+  )
+}
+
+function CompactJiraRow({ issue }: { issue: JiraIssue }) {
+  return (
+    <li className="flex items-center gap-2 px-1 py-1 text-xs hover:bg-subtle">
+      <a
+        href={issue.url}
+        target="_blank"
+        rel="noreferrer"
+        className="flex min-w-0 flex-1 items-center gap-2"
+      >
+        <span className="flex-shrink-0 font-mono font-medium text-success">{issue.key}</span>
+        <span className="min-w-0 flex-1 truncate text-text-primary">{issue.summary}</span>
+        <span className="flex-shrink-0 text-[11px] text-text-tertiary">{issue.assigneeName}</span>
+      </a>
+    </li>
   )
 }
 
