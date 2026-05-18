@@ -10,7 +10,8 @@ export default async function MembersPage() {
   if (me.role !== "admin") redirect("/")
 
   const users = await prisma.user.findMany({
-    orderBy: [{ archivedAt: "asc" }, { createdAt: "asc" }],
+    // 排序：先把封存的丟最後（null first）→ 同活躍 group 內以 role 排（admin < member 字典序）→ 同 role 用 name asc
+    orderBy: [{ archivedAt: "asc" }, { role: "asc" }, { name: "asc" }],
     select: {
       id: true,
       name: true,
