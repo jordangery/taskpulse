@@ -62,7 +62,10 @@ export async function DashboardMember({ user }: Props) {
 
         <DashboardCalendar events={calendar.events} todayKey={calendar.todayKey} />
 
-        {/* 12-col：左 7 我的任務、右 5 Jira + 最近回應 */}
+        {/* Jira 看板（整排） */}
+        <DashboardJiraWidget scope="mine" />
+
+        {/* 12-col：左 7 我的任務、右 5 最近回應 */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           <section className="space-y-3 lg:col-span-7">
             <h2 className="text-sm font-medium text-text-secondary">我的任務</h2>
@@ -105,41 +108,37 @@ export async function DashboardMember({ user }: Props) {
             )}
           </section>
 
-          <div className="space-y-6 lg:col-span-5">
-            <DashboardJiraWidget scope="mine" />
-
-            <section className="space-y-3">
-              <h2 className="text-sm font-medium text-text-secondary">最近收到的回應</h2>
-              {latestFeedbacks.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border-default bg-surface px-6 py-8 text-center text-sm text-text-tertiary">
-                  還沒收到回應。
-                </div>
-              ) : (
-                <ul className="space-y-2">
-                  {latestFeedbacks.map((fb) => (
-                    <li
-                      key={fb.id}
-                      className="rounded-r-md border-l-[3px] border-accent bg-info-subtle px-4 py-3"
-                    >
-                      <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
-                        <Link
-                          href={`/tasks/${fb.progressUpdate.task.id}`}
-                          className="font-medium text-accent hover:text-accent-hover"
-                        >
-                          {fb.progressUpdate.task.title}
-                        </Link>
-                        <span className="text-text-tertiary">— {fb.author.name}</span>
-                        <span className="text-text-tertiary">
-                          {formatDistanceToNow(fb.updatedAt, { locale: zhTW, addSuffix: true })}
-                        </span>
-                      </div>
-                      <p className="line-clamp-2 text-sm text-text-primary">{fb.content}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          </div>
+          <section className="space-y-3 lg:col-span-5">
+            <h2 className="text-sm font-medium text-text-secondary">最近收到的回應</h2>
+            {latestFeedbacks.length === 0 ? (
+              <div className="rounded-md border border-dashed border-border-default bg-surface px-6 py-8 text-center text-sm text-text-tertiary">
+                還沒收到回應。
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {latestFeedbacks.map((fb) => (
+                  <li
+                    key={fb.id}
+                    className="rounded-r-md border-l-[3px] border-accent bg-info-subtle px-4 py-3"
+                  >
+                    <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
+                      <Link
+                        href={`/tasks/${fb.progressUpdate.task.id}`}
+                        className="font-medium text-accent hover:text-accent-hover"
+                      >
+                        {fb.progressUpdate.task.title}
+                      </Link>
+                      <span className="text-text-tertiary">— {fb.author.name}</span>
+                      <span className="text-text-tertiary">
+                        {formatDistanceToNow(fb.updatedAt, { locale: zhTW, addSuffix: true })}
+                      </span>
+                    </div>
+                    <p className="line-clamp-2 text-sm text-text-primary">{fb.content}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       </div>
     </div>

@@ -149,48 +149,44 @@ export async function DashboardAdmin() {
           </Card>
         </section>
 
-        {/* 12-col：左 7 最近動態、右 5 Jira widget */}
-        <section className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-          <Card title="最近 5 筆進度動態" hint="跨任務 timeline" className="lg:col-span-7">
-            {recent.length === 0 ? (
-              <p className="py-6 text-center text-sm text-text-tertiary">還沒有進度紀錄</p>
-            ) : (
-              <ul className="space-y-2">
-                {recent.map((u) => (
-                  <li
-                    key={u.id}
-                    className="flex items-start gap-3 rounded-md border border-border-subtle bg-canvas px-3 py-2"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <Link
-                          href={`/tasks/${u.task.id}`}
-                          className="font-medium text-accent hover:text-accent-hover"
-                        >
-                          {u.task.title}
-                        </Link>
-                        <span className="text-text-tertiary">— {u.author.name}</span>
-                        {u.feedbacks.length === 0 && (
-                          <span className="rounded-full bg-warning-subtle px-2 py-0.5 text-warning">
-                            尚未回饋
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 line-clamp-2 text-sm text-text-secondary">{u.summary}</p>
-                    </div>
-                    <time className="flex-shrink-0 text-xs text-text-tertiary">
-                      {formatDistanceToNow(u.createdAt, { locale: zhTW, addSuffix: true })}
-                    </time>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
+        {/* Jira 看板（整排，5-col kanban） */}
+        <DashboardJiraWidget scope="team" />
 
-          <div className="lg:col-span-5">
-            <DashboardJiraWidget scope="team" />
-          </div>
-        </section>
+        <Card title="最近 5 筆進度動態" hint="跨任務 timeline">
+          {recent.length === 0 ? (
+            <p className="py-6 text-center text-sm text-text-tertiary">還沒有進度紀錄</p>
+          ) : (
+            <ul className="space-y-2">
+              {recent.map((u) => (
+                <li
+                  key={u.id}
+                  className="flex items-start gap-3 rounded-md border border-border-subtle bg-canvas px-3 py-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <Link
+                        href={`/tasks/${u.task.id}`}
+                        className="font-medium text-accent hover:text-accent-hover"
+                      >
+                        {u.task.title}
+                      </Link>
+                      <span className="text-text-tertiary">— {u.author.name}</span>
+                      {u.feedbacks.length === 0 && (
+                        <span className="rounded-full bg-warning-subtle px-2 py-0.5 text-warning">
+                          尚未回饋
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-sm text-text-secondary">{u.summary}</p>
+                  </div>
+                  <time className="flex-shrink-0 text-xs text-text-tertiary">
+                    {formatDistanceToNow(u.createdAt, { locale: zhTW, addSuffix: true })}
+                  </time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
       </div>
     </div>
   )
