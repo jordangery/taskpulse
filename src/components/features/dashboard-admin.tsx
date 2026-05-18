@@ -131,11 +131,13 @@ export async function DashboardAdmin() {
           </form>
         )}
 
-        {/* 順序：團隊 Jira → 我的 Jira → calendar → 3-col stats → 最近進度動態 */}
+        {/* 順序：團隊 Jira → (我的 Jira 左 + Calendar 右) → 3-col stats → 最近進度動態 */}
         <DashboardJiraWidget scope="team" result={teamJira} />
-        <DashboardJiraWidget scope="mine" />
 
-        <DashboardCalendar events={calendar.events} todayKey={calendar.todayKey} />
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <DashboardJiraWidget scope="mine" />
+          <DashboardCalendar events={calendar.events} todayKey={calendar.todayKey} />
+        </section>
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Card title="每人未完成 Jira 票" hint="非已完成 bucket，依 assignee 分組">
