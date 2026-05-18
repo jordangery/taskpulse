@@ -18,7 +18,7 @@ import { prisma } from "./db"
 
 const ATLASSIAN_TOKEN_URL = "https://auth.atlassian.com/oauth/token"
 const ATLASSIAN_RESOURCES_URL = "https://api.atlassian.com/oauth/token/accessible-resources"
-const JIRA_FIELDS = "summary,status,priority,issuetype,duedate,assignee"
+const JIRA_FIELDS = "summary,status,priority,issuetype,duedate,assignee,updated"
 const JIRA_MAX_RESULTS = 50
 
 export interface JiraIssue {
@@ -28,6 +28,7 @@ export interface JiraIssue {
   priority: string | null
   issueType: string
   dueDate: string | null // YYYY-MM-DD
+  updated: string | null // ISO timestamp (Jira 回的 "updated" 欄位)，用來判斷久未更新
   url: string // browse URL
   assigneeName: string // 對應 taskpulse 名字（找不到則用 Atlassian displayName）
 }
@@ -61,6 +62,7 @@ interface JiraSearchResponse {
       priority?: { name?: string } | null
       issuetype?: { name?: string }
       duedate?: string | null
+      updated?: string | null
       assignee?: {
         emailAddress?: string
         displayName?: string
@@ -207,6 +209,7 @@ async function fetchIssuesForCloud(
       priority: issue.fields.priority?.name ?? null,
       issueType: issue.fields.issuetype?.name ?? "Task",
       dueDate: issue.fields.duedate ?? null,
+      updated: issue.fields.updated ?? null,
       url: `${siteUrl.replace(/\/$/, "")}/browse/${issue.key}`,
       assigneeName: taskpulseName ?? fallbackName,
     }

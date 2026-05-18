@@ -8,6 +8,7 @@
 import { requireUser } from "@/lib/current-user"
 import { fetchMyJiraIssues, fetchTeamJiraIssues } from "@/lib/jira"
 import { JiraIssueList } from "./dashboard-jira-issue-list"
+import { TeamJiraSummary } from "./dashboard-jira-team-summary"
 import { RefreshButton } from "./refresh-button"
 
 interface Props {
@@ -115,5 +116,10 @@ function Body({
     )
   }
 
-  return <JiraIssueList issues={result.issues} showAssignee={scope === "team"} />
+  return (
+    <>
+      {scope === "team" && <TeamJiraSummary issues={result.issues} />}
+      <JiraIssueList issues={result.issues} showAssignee={scope === "team"} />
+    </>
+  )
 }

@@ -5,77 +5,22 @@
 // 只有 "ok" 分支會把 issues 傳進來這裡
 //
 // 響應式：lg 5 欄、md 2 欄、行動裝置 1 欄；空 bucket 不收起，固定欄位讓眼睛習慣位置
+//
+// bucket 邏輯（regex + 色票）抽到 src/lib/jira-buckets.ts 共享給 team summary 用
 
 import { useMemo } from "react"
 import type { JiraIssue } from "@/lib/jira"
+import {
+  BUCKETS,
+  type BucketId,
+  bucketDefFor,
+  bucketIdFor,
+  DISPLAY_ORDER,
+} from "@/lib/jira-buckets"
 
 interface Props {
   issues: JiraIssue[]
   showAssignee: boolean
-}
-
-// match 優先順序很重要：已完成必須先試，否則「已修復」會被「修復中」regex 搶走
-// 顯示順序看 DISPLAY_ORDER（從工作流左到右排）
-type BucketId = "open" | "in_progress" | "review" | "done" | "other"
-const BUCKETS: ReadonlyArray<{
-  id: BucketId
-  label: string
-  match: RegExp | null
-  // 欄位 header / issue badge 共用一套色票
-  headerCls: string
-  badgeCls: string
-}> = [
-  {
-    id: "done",
-    label: "已完成",
-    match: /done|closed|resolved|complete|已修復|已完成|已關閉|已解決|已结案|完成|结案|关闭|完了/i,
-    headerCls: "bg-success-subtle text-success",
-    badgeCls: "bg-success-subtle text-success",
-  },
-  {
-    id: "review",
-    label: "Review",
-    match: /review|qa|verify|待審|待測|審查|审查|待验|驗證|验证|待確認/i,
-    headerCls: "bg-info-subtle text-info",
-    badgeCls: "bg-info-subtle text-info",
-  },
-  {
-    id: "in_progress",
-    label: "進行中",
-    match: /progress|doing|develop|進行中|进行中|開發中|开发中|處理中|处理中|修復中|修复中/i,
-    headerCls: "bg-accent-subtle text-accent",
-    badgeCls: "bg-accent-subtle text-accent",
-  },
-  {
-    id: "open",
-    label: "開放",
-    match: /todo|open|backlog|to do|new|selected|開放|开放|待辦|待办|待處理|待处理|新增|未指派/i,
-    headerCls: "bg-warning-subtle text-warning",
-    badgeCls: "bg-warning-subtle text-warning",
-  },
-  {
-    id: "other",
-    label: "其他",
-    match: null,
-    headerCls: "bg-subtle text-text-secondary",
-    badgeCls: "bg-subtle text-text-secondary",
-  },
-]
-
-const DISPLAY_ORDER: BucketId[] = ["open", "in_progress", "review", "done", "other"]
-
-function bucketIdFor(status: string): BucketId {
-  const lower = status.toLowerCase()
-  for (const b of BUCKETS) {
-    if (b.match?.test(lower)) return b.id
-  }
-  return "other"
-}
-
-function bucketStyleFor(status: string) {
-  const id = bucketIdFor(status)
-  const b = BUCKETS.find((x) => x.id === id)
-  return b ?? BUCKETS[BUCKETS.length - 1]
 }
 
 export function JiraIssueList({ issues, showAssignee }: Props) {
@@ -103,7 +48,7 @@ export function JiraIssueList({ issues, showAssignee }: Props) {
             key={id}
             label={bucket.label}
             count={items.length}
-            headerCls={bucket.headerCls}
+            headerCls={bucket.cls}
             items={items}
             showAssignee={showAssignee}
           />
@@ -148,7 +93,7 @@ function KanbanColumn({
 }
 
 function IssueCard({ issue, showAssignee }: { issue: JiraIssue; showAssignee: boolean }) {
-  const b = bucketStyleFor(issue.status)
+  const b = bucketDefFor(issue.status)
   return (
     <li className="rounded-md border border-border-subtle bg-surface px-2.5 py-2 hover:border-border-default">
       <a href={issue.url} target="_blank" rel="noreferrer" className="block min-w-0">
@@ -156,7 +101,7 @@ function IssueCard({ issue, showAssignee }: { issue: JiraIssue; showAssignee: bo
           <span className="font-mono font-medium text-accent hover:text-accent-hover">
             {issue.key}
           </span>
-          <span className={`truncate rounded-full px-1.5 py-0 ${b.badgeCls}`} title={issue.status}>
+          <span className={`truncate rounded-full px-1.5 py-0 ${b.cls}`} title={issue.status}>
             {issue.status}
           </span>
         </div>
