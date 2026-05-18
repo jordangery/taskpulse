@@ -16,6 +16,7 @@ import { format } from "date-fns"
 import { zhTW } from "date-fns/locale"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { CalendarEventSection } from "@/components/features/calendar-event-section"
 import { CalendarNoteSection } from "@/components/features/calendar-note-section"
 import { getCurrentUser } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
@@ -97,7 +98,36 @@ export default async function CalendarDatePage({ params }: PageProps) {
       updatedAt: true,
     },
   })
-  const [tasks, jiraResult, notes] = await Promise.all([taskPromise, jiraPromise, notesPromise])
+  // 事件：startDate <= 當天 <= endDate（跨天事件也算）
+  const eventsPromise = prisma.event.findMany({
+    where: { startDate: { lte: nextDay }, endDate: { gte: target } },
+    orderBy: { startDate: "asc" },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      startDate: true,
+      endDate: true,
+      creatorId: true,
+      creator: { select: { id: true, name: true } },
+      participants: {
+        select: { user: { select: { id: true, name: true } } },
+      },
+    },
+  })
+  // 給 event form 用的成員 candidate（按 role 排）
+  const candidatesPromise = prisma.user.findMany({
+    where: { archivedAt: null },
+    select: { id: true, name: true, role: true },
+    orderBy: [{ role: "asc" }, { name: "asc" }],
+  })
+  const [tasks, jiraResult, notes, events, candidates] = await Promise.all([
+    taskPromise,
+    jiraPromise,
+    notesPromise,
+    eventsPromise,
+    candidatesPromise,
+  ])
 
   // 只挑 dueDate 落在當天 + 非已完成的 Jira 票
   const jiraIssues: JiraIssue[] =
@@ -126,11 +156,20 @@ export default async function CalendarDatePage({ params }: PageProps) {
             </span>
           </div>
           <p className="text-sm text-text-secondary">
-            記事 {notes.length}｜Jira {jiraIssues.length}｜離線任務 {tasks.length}
+            事件 {events.length}｜記事 {notes.length}｜Jira {jiraIssues.length}｜離線任務{" "}
+            {tasks.length}
           </p>
         </header>
 
         <div className="space-y-6">
+          <CalendarEventSection
+            dateKey={dateKey}
+            events={events}
+            candidates={candidates}
+            currentUserId={me.id}
+            currentUserRole={me.role}
+          />
+
           <CalendarNoteSection
             dateKey={dateKey}
             notes={notes}

@@ -29,6 +29,15 @@ export interface CalendarItem {
   url?: string
 }
 
+// 一筆 event 在 calendar 上的精簡表現（橫跨多天的 event 會出現在每個 spanned cell）
+export interface CalendarEventEntry {
+  id: string
+  title: string
+  // 整段範圍（用來判斷是否是該段的起點 / 中段 / 終點，未來想做連續色帶 UI 用）
+  startKey: string
+  endKey: string
+}
+
 export interface CalendarEvent {
   date: string
   items: CalendarItem[]
@@ -36,6 +45,8 @@ export interface CalendarEvent {
   // 這天有幾則 calendar note（任意 user 寫的、team 共享）
   // 完整內容在 /calendar/[date] 看；dashboard 只顯示有沒有
   noteCount: number
+  // 這天落在範圍內的 events（≥1 即顯示 📅 indicator）
+  events: CalendarEventEntry[]
 }
 
 export interface CalendarData {
@@ -51,11 +62,16 @@ function toLocalKey(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-export async function fetchCalendarEvents(userId: string, isAdmin: boolean): Promise<CalendarData> {
+// 預設 28 天（4 週 = 上週 + 本週 + 未來 2 週）；季 view 用 84（12 週）
+export async function fetchCalendarEvents(
+  userId: string,
+  isAdmin: boolean,
+  windowDays: 28 | 84 = 84,
+): Promise<CalendarData> {
   const today = startOfDay(new Date())
   const thisWeekMonday = startOfWeek(today, { weekStartsOn: 1 })
   const start = addDays(thisWeekMonday, -7)
-  const end = addDays(start, 28)
+  const end = addDays(start, windowDays)
 
   // taskpulse Task：只拿「離線記事」(jiraIssueKey IS NULL)；已同步到 Jira 的會在 Jira 那邊出現
   // 避免一張單在 calendar 上重複顯示兩筆
@@ -83,7 +99,7 @@ export async function fetchCalendarEvents(userId: string, isAdmin: boolean): Pro
   // Jira：admin 用 team token 撈全部、member 撈自己的
   const jiraPromise = isAdmin ? fetchTeamJiraIssues() : fetchMyJiraIssues(userId)
 
-  // 日曆記事：撈這 28 天範圍內所有 note，groupBy dateKey 拿 count
+  // 日曆記事：撈這 window 範圍內所有 note，groupBy dateKey 拿 count
   const startKey = toLocalKey(start)
   const endKey = toLocalKey(addDays(end, -1)) // end 是 exclusive，倒回最後一天
   const notesCountPromise = prisma.calendarNote.groupBy({
@@ -92,13 +108,48 @@ export async function fetchCalendarEvents(userId: string, isAdmin: boolean): Pro
     _count: { _all: true },
   })
 
-  const [tasks, jira, noteCounts] = await Promise.all([taskPromise, jiraPromise, notesCountPromise])
+  // 事件：撈所有「範圍跟 calendar window 有交集」的 events
+  // (event.startDate < window.end) AND (event.endDate >= window.start)
+  const eventsPromise = prisma.event.findMany({
+    where: {
+      startDate: { lt: end },
+      endDate: { gte: start },
+    },
+    select: { id: true, title: true, startDate: true, endDate: true },
+    orderBy: { startDate: "asc" },
+  })
+
+  const [tasks, jira, noteCounts, events] = await Promise.all([
+    taskPromise,
+    jiraPromise,
+    notesCountPromise,
+    eventsPromise,
+  ])
 
   const noteCountByDate = new Map<string, number>()
   for (const n of noteCounts) noteCountByDate.set(n.dateKey, n._count._all)
 
+  // 把每個 event 攤平到它覆蓋的每一個 cell
+  const eventsByDate = new Map<string, CalendarEventEntry[]>()
+  for (const ev of events) {
+    const evStartKey = toLocalKey(ev.startDate)
+    const evEndKey = toLocalKey(ev.endDate)
+    // 從 evStart 跟 window-start 取較大、到 evEnd 跟 window-end-inclusive 取較小，逐天 push
+    const iterStart = ev.startDate < start ? start : ev.startDate
+    const windowLastDay = addDays(end, -1) // inclusive last day
+    const iterEnd = ev.endDate > windowLastDay ? windowLastDay : ev.endDate
+    const cursor = new Date(iterStart)
+    while (cursor.getTime() <= iterEnd.getTime()) {
+      const key = toLocalKey(cursor)
+      const list = eventsByDate.get(key) ?? []
+      list.push({ id: ev.id, title: ev.title, startKey: evStartKey, endKey: evEndKey })
+      eventsByDate.set(key, list)
+      cursor.setDate(cursor.getDate() + 1)
+    }
+  }
+
   const buckets = new Map<string, CalendarItem[]>()
-  for (let i = 0; i < 28; i++) {
+  for (let i = 0; i < windowDays; i++) {
     const d = addDays(start, i)
     buckets.set(toLocalKey(d), [])
   }
@@ -158,6 +209,7 @@ export async function fetchCalendarEvents(userId: string, isAdmin: boolean): Pro
       items,
       holiday: holidays.get(date),
       noteCount: noteCountByDate.get(date) ?? 0,
+      events: eventsByDate.get(date) ?? [],
     })),
     todayKey: toLocalKey(today),
     startKey: toLocalKey(start),

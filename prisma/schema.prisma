@@ -38,6 +38,8 @@ model User {
   feedbacks     Feedback[]
   notifications Notification[]
   calendarNotes CalendarNote[]
+  createdEvents Event[]            @relation("EventCreator")
+  eventParts    EventParticipant[]
 
   @@index([archivedAt])
 }
@@ -158,6 +160,37 @@ model Notification {
 
   @@index([recipientId, readAt])
   @@index([createdAt])
+}
+
+// 事件 / 活動：跟 Task 不同 — 是「會發生的事」而非「要做的事」
+// 可跨天（startDate ~ endDate；單日活動 endDate = startDate）；不結案；不同步 Jira
+// 例：3 天 workshop / 一週請假 / 公司年會
+// 日期用 DateTime 但只取 local 零點（時區處理走 toLocalKey 模式）
+model Event {
+  id          String             @id @default(cuid())
+  title       String
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  creatorId   String
+  creator     User               @relation("EventCreator", fields: [creatorId], references: [id])
+  participants EventParticipant[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([startDate, endDate])
+}
+
+// Event ↔ User 多對多：誰會參與這場活動（出席 / 受影響）
+// 跟 TaskAssignee 不同概念 — Task assignee 是「執行者」、Event participant 是「出席者」
+model EventParticipant {
+  eventId String
+  userId  String
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user    User  @relation(fields: [userId], references: [id])
+
+  @@id([eventId, userId])
+  @@index([userId])
 }
 
 // ----- NextAuth (Day 2) -----

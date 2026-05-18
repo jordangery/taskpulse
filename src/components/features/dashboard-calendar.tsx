@@ -34,7 +34,7 @@ interface Props {
   todayKey: string
 }
 
-type ViewMode = "month" | "week"
+type ViewMode = "month" | "week" | "quarter"
 
 const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"]
 const MAX_TOOLTIP_TASKS = 5
@@ -66,8 +66,14 @@ export function DashboardCalendar({ events, todayKey }: Props) {
 
   const totalTasks = events.reduce((sum, e) => sum + e.items.length, 0)
 
+  // events lib 現在預設回 84 天（12 週）給「季」view 用；月用 28、週用 7
   const weekStartIdx = findWeekViewStartIndex(events, todayKey)
-  const visibleEvents = view === "month" ? events : events.slice(weekStartIdx, weekStartIdx + 7)
+  const visibleEvents =
+    view === "quarter"
+      ? events
+      : view === "month"
+        ? events.slice(0, 28)
+        : events.slice(weekStartIdx, weekStartIdx + 7)
 
   const weekRangeLabel = (() => {
     if (visibleEvents.length === 0) return ""
@@ -103,18 +109,22 @@ export function DashboardCalendar({ events, todayKey }: Props) {
     <article className="rounded-md border border-border-subtle bg-surface px-5 py-4">
       <header className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <h2 className="text-sm font-medium text-text-primary">本月日曆</h2>
+          <h2 className="text-sm font-medium text-text-primary">日曆</h2>
           <p className="mt-0.5 text-xs text-text-tertiary">
             {view === "month"
-              ? "過去 1 週 + 本週 + 未來 2 週共 28 天｜⭐ 今天｜紅底 逾期｜拖任務改截止日"
-              : `本週（${weekRangeLabel}）｜⭐ 今天｜紅底 逾期｜拖任務改截止日`}
+              ? "上週 + 本週 + 未來 2 週共 28 天｜⭐ 今天｜紅底 逾期｜📅 事件｜拖任務改截止日"
+              : view === "week"
+                ? `本週（${weekRangeLabel}）｜⭐ 今天｜紅底 逾期｜📅 事件｜拖任務改截止日`
+                : "近 12 週｜📅 有事件｜紅底逾期｜⭐ 今天"}
           </p>
         </div>
         <div className="flex items-center gap-3">
           <p className="text-xs text-text-tertiary">
-            {view === "month"
-              ? `${totalTasks} 個任務在這 4 週到期`
-              : `${visibleEvents.reduce((s, e) => s + e.items.length, 0)} 個任務本週到期`}
+            {view === "quarter"
+              ? `${totalTasks} 個任務在這 12 週到期`
+              : view === "month"
+                ? `${visibleEvents.reduce((s, e) => s + e.items.length, 0)} 個任務在這 4 週到期`
+                : `${visibleEvents.reduce((s, e) => s + e.items.length, 0)} 個任務本週到期`}
           </p>
           <ViewToggle view={view} onChange={setView} />
         </div>
@@ -134,7 +144,7 @@ export function DashboardCalendar({ events, todayKey }: Props) {
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-1">
+      <div className={view === "quarter" ? "grid grid-cols-7 gap-0.5" : "grid grid-cols-7 gap-1"}>
         {visibleEvents.map((event) => (
           <CalendarCell
             key={event.date}
@@ -144,6 +154,7 @@ export function DashboardCalendar({ events, todayKey }: Props) {
             isTooltipOpen={openTooltipDate === event.date}
             isDropHover={hoverDropDate === event.date}
             draggingTaskId={draggingTaskId}
+            compact={view === "quarter"}
             onCellClick={handleCellClick}
             onTaskDragStart={setDraggingTaskId}
             onTaskDragEnd={() => setDraggingTaskId(null)}
@@ -169,32 +180,38 @@ export function DashboardCalendar({ events, todayKey }: Props) {
 function ViewToggle({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode) => void }) {
   const baseBtn =
     "px-2 py-0.5 text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+  const activeCls = "bg-accent-subtle text-accent"
+  const idleCls = "bg-surface text-text-secondary hover:bg-subtle"
   return (
     <fieldset className="inline-flex overflow-hidden rounded-md border border-border-subtle p-0">
       <legend className="sr-only">切換顯示範圍</legend>
       <button
         type="button"
+        onClick={() => onChange("week")}
+        aria-pressed={view === "week"}
+        className={`${baseBtn} ${view === "week" ? activeCls : idleCls}`}
+      >
+        週
+      </button>
+      <button
+        type="button"
         onClick={() => onChange("month")}
         aria-pressed={view === "month"}
-        className={`${baseBtn} ${
-          view === "month"
-            ? "bg-accent-subtle text-accent"
-            : "bg-surface text-text-secondary hover:bg-subtle"
+        className={`${baseBtn} border-l border-border-subtle ${
+          view === "month" ? activeCls : idleCls
         }`}
       >
         月
       </button>
       <button
         type="button"
-        onClick={() => onChange("week")}
-        aria-pressed={view === "week"}
+        onClick={() => onChange("quarter")}
+        aria-pressed={view === "quarter"}
         className={`${baseBtn} border-l border-border-subtle ${
-          view === "week"
-            ? "bg-accent-subtle text-accent"
-            : "bg-surface text-text-secondary hover:bg-subtle"
+          view === "quarter" ? activeCls : idleCls
         }`}
       >
-        週
+        季
       </button>
     </fieldset>
   )
@@ -207,6 +224,7 @@ interface CellProps {
   isTooltipOpen: boolean
   isDropHover: boolean
   draggingTaskId: string | null
+  compact?: boolean // 季 view 用，cell 更小、隱藏細節
   onCellClick: (dateKey: string) => void
   onTaskDragStart: (taskId: string) => void
   onTaskDragEnd: () => void
@@ -221,6 +239,7 @@ function CalendarCell({
   isTooltipOpen,
   isDropHover,
   draggingTaskId,
+  compact = false,
   onCellClick,
   onTaskDragStart,
   onTaskDragEnd,
@@ -253,17 +272,22 @@ function CalendarCell({
 
   const dropRing = isDropHover ? "ring-2 ring-accent" : ""
 
+  const hasContent = hasTasks || event.events.length > 0
+  const cellHeightCls = compact ? "h-8" : "h-16 sm:h-12 md:h-16"
+  const cellPaddingCls = compact ? "px-1 py-0.5" : "px-1.5 py-1"
   return (
     // biome-ignore lint/a11y/useSemanticElements: 需要 drop target + 內含 Link，<button> 無法包 <a>
     <div
-      className={`group relative flex h-16 flex-col justify-between rounded-md border px-1.5 py-1 transition-shadow hover:border-border-default sm:h-12 md:h-16 ${cellClass} ${dropRing}`}
+      className={`group relative flex ${cellHeightCls} flex-col justify-between rounded-md border ${cellPaddingCls} transition-shadow hover:border-border-default ${cellClass} ${dropRing}`}
       role="button"
-      tabIndex={hasTasks ? 0 : -1}
+      tabIndex={hasContent ? 0 : -1}
       aria-label={
-        hasTasks ? `${event.date}，${event.items.length} 個任務，點擊展開` : `${event.date}，無任務`
+        hasContent
+          ? `${event.date}，${event.items.length} 任務 + ${event.events.length} 事件`
+          : `${event.date}`
       }
       aria-expanded={isTooltipOpen}
-      aria-disabled={!hasTasks}
+      aria-disabled={!hasContent}
       onDragOver={(e) => {
         // 允許 drop
         e.preventDefault()
@@ -288,11 +312,11 @@ function CalendarCell({
         // 排除：點到 Link（日期數字、empty-state link）或 tooltip 內元素
         const target = e.target as HTMLElement
         if (target.closest("a") || target.closest("[data-tooltip-root]")) return
-        if (!hasTasks) return
+        if (!hasContent) return
         onCellClick(event.date)
       }}
       onKeyDown={(e) => {
-        if ((e.key === "Enter" || e.key === " ") && hasTasks) {
+        if ((e.key === "Enter" || e.key === " ") && hasContent) {
           e.preventDefault()
           onCellClick(event.date)
         } else if (e.key === "Escape") {
@@ -311,6 +335,16 @@ function CalendarCell({
           {day}
         </Link>
         <div className="flex items-center gap-0.5">
+          {event.events.length > 0 && (
+            <span
+              role="img"
+              aria-label={`${event.events.length} 件事件`}
+              className="text-[10px]"
+              title={event.events.map((e) => e.title).join("\n")}
+            >
+              📅
+            </span>
+          )}
           {event.noteCount > 0 && (
             <span
               role="img"
@@ -329,15 +363,15 @@ function CalendarCell({
         </div>
       </div>
 
-      {event.holiday && (
+      {!compact && event.holiday && (
         <span className="line-clamp-1 text-[10px] leading-tight text-info" title={event.holiday}>
           {event.holiday}
         </span>
       )}
 
-      {hasTasks && <CountBadge count={event.items.length} isOverdue={isOverdue} />}
+      {!compact && hasTasks && <CountBadge count={event.items.length} isOverdue={isOverdue} />}
 
-      {hasTasks && isTooltipOpen && (
+      {hasContent && isTooltipOpen && (
         <Tooltip
           event={event}
           draggingTaskId={draggingTaskId}
@@ -393,17 +427,38 @@ function Tooltip({
       className="absolute top-full left-1/2 z-10 mt-1 w-48 -translate-x-1/2 rounded-md border border-border-subtle bg-elevated px-3 py-2 text-left shadow-md"
     >
       <p className="mb-1 text-[10px] uppercase tracking-wide text-text-tertiary">{event.date}</p>
-      <ul className="space-y-1">
-        {visible.map((item) => (
-          <TooltipItem
-            key={item.id}
-            item={item}
-            isDragging={draggingTaskId === item.taskId}
-            onTaskDragStart={onTaskDragStart}
-            onTaskDragEnd={onTaskDragEnd}
-          />
-        ))}
-      </ul>
+
+      {event.events.length > 0 && (
+        <div className="mb-2 border-b border-border-subtle pb-2">
+          <p className="mb-1 text-[10px] text-text-tertiary">📅 事件</p>
+          <ul className="space-y-0.5">
+            {event.events.map((ev) => (
+              <li key={ev.id} className="line-clamp-1 text-xs text-text-primary">
+                {ev.title}
+                {ev.startKey !== ev.endKey && (
+                  <span className="ml-1 text-[10px] text-text-tertiary">
+                    ({ev.startKey.slice(5)}–{ev.endKey.slice(5)})
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {visible.length > 0 && (
+        <ul className="space-y-1">
+          {visible.map((item) => (
+            <TooltipItem
+              key={item.id}
+              item={item}
+              isDragging={draggingTaskId === item.taskId}
+              onTaskDragStart={onTaskDragStart}
+              onTaskDragEnd={onTaskDragEnd}
+            />
+          ))}
+        </ul>
+      )}
       {extra > 0 && <p className="mt-1 text-[10px] text-text-tertiary">等 {extra} 個…</p>}
     </div>
   )
