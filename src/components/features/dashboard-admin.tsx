@@ -131,9 +131,12 @@ export async function DashboardAdmin() {
           </form>
         )}
 
+        {/* 順序：團隊 Jira → 我的 Jira → calendar → 3-col stats → 最近進度動態 */}
+        <DashboardJiraWidget scope="team" result={teamJira} />
+        <DashboardJiraWidget scope="mine" />
+
         <DashboardCalendar events={calendar.events} todayKey={calendar.todayKey} />
 
-        {/* 3-col：兩張 chart + 未獲回饋大數字 */}
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Card title="每人未完成 Jira 票" hint="非已完成 bucket，依 assignee 分組">
             <ChartPeopleTasks data={peopleTasks} />
@@ -155,10 +158,6 @@ export async function DashboardAdmin() {
             </div>
           </Card>
         </section>
-
-        {/* Jira 看板：先「我的」再「團隊」（admin 自己派單前先看自己手上的單） */}
-        <DashboardJiraWidget scope="mine" />
-        <DashboardJiraWidget scope="team" result={teamJira} />
 
         <Card title="最近 5 筆進度動態" hint="跨任務 timeline">
           {recent.length === 0 ? (
