@@ -21,8 +21,11 @@ export const SORT_OPTIONS = [
 
 export type SortValue = (typeof SORT_OPTIONS)[number]["value"]
 
+// Task 在 taskpulse 是「離線記事 buffer」：當 Jira 還沒起單時的臨時記錄
+// 一旦綁定 jiraIssueKey 就視為「已升級到 Jira」、預設從列表消失（去 Jira 看本尊）
 export const SHOW_OPTIONS = [
-  { value: "active", label: "活躍（預設）" },
+  { value: "offline", label: "離線中（待轉 Jira）" },
+  { value: "synced", label: "已轉成 Jira" },
   { value: "closed", label: "已結案" },
   { value: "all", label: "全部" },
 ] as const
@@ -41,7 +44,7 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
   const [status, setStatus] = useState(searchParams.get("status") ?? "")
   const [overdue, setOverdue] = useState(searchParams.get("overdue") === "1")
   const [sort, setSort] = useState<SortValue>((searchParams.get("sort") as SortValue) || "created")
-  const [show, setShow] = useState<ShowValue>((searchParams.get("show") as ShowValue) || "active")
+  const [show, setShow] = useState<ShowValue>((searchParams.get("show") as ShowValue) || "offline")
 
   // URL 變動同步回 state（瀏覽器上下一頁等情境）
   useEffect(() => {
@@ -50,7 +53,7 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
     setStatus(searchParams.get("status") ?? "")
     setOverdue(searchParams.get("overdue") === "1")
     setSort((searchParams.get("sort") as SortValue) || "created")
-    setShow((searchParams.get("show") as ShowValue) || "active")
+    setShow((searchParams.get("show") as ShowValue) || "offline")
   }, [searchParams])
 
   function pushUrl(next: {
@@ -67,7 +70,7 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
     if (next.status && next.status.length > 0) params.set("status", next.status)
     if (next.overdue) params.set("overdue", "1")
     if (next.sort && next.sort !== "created") params.set("sort", next.sort)
-    if (next.show && next.show !== "active") params.set("show", next.show)
+    if (next.show && next.show !== "offline") params.set("show", next.show)
     const qs = params.toString()
     startTransition(() => {
       router.push(qs ? `${pathname}?${qs}` : pathname)
@@ -85,7 +88,8 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
     return () => clearTimeout(t)
   }, [q])
 
-  const hasAnyFilter = q || assignee || status || overdue || sort !== "created" || show !== "active"
+  const hasAnyFilter =
+    q || assignee || status || overdue || sort !== "created" || show !== "offline"
 
   return (
     <div className="mb-4 rounded-md border border-border-subtle bg-surface px-4 py-3">
@@ -181,14 +185,14 @@ export function TaskListFilters({ assignees }: TaskListFiltersProps) {
               setStatus("")
               setOverdue(false)
               setSort("created")
-              setShow("active")
+              setShow("offline")
               pushUrl({
                 q: "",
                 assignee: "",
                 status: "",
                 overdue: false,
                 sort: "created",
-                show: "active",
+                show: "offline",
               })
             }}
             className="text-xs text-text-tertiary hover:text-text-secondary"

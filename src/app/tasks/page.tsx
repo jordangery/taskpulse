@@ -40,7 +40,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
   const statusFilter = params.status?.trim() || ""
   const overdueOnly = params.overdue === "1"
   const sort = (params.sort ?? "created") as SortValue
-  const show = (params.show ?? "active") as ShowValue
+  const show = (params.show ?? "offline") as ShowValue
 
   // 角色切換：admin 看全部、member 只看自己被指派的（未封存）
   const baseWhere: Prisma.TaskWhereInput = isAdmin ? {} : { assigneeId: me.id }
@@ -54,9 +54,16 @@ export default async function TasksPage({ searchParams }: PageProps) {
   if (overdueOnly) {
     baseWhere.dueDate = { lt: new Date(), not: null }
   }
-  // 結案過濾：預設只看活躍（completedAt null），可切「已結案」/「全部」
-  if (show === "active") {
+  // taskpulse Task 是「離線記事 buffer」—— 預設只看還沒升級到 Jira 的記事
+  //   offline (預設)：未綁 Jira + 未結案 + 未封存
+  //   synced：       已綁 Jira（不管 結案/封存）
+  //   closed：       已結案
+  //   all：          不加 jira/結案 條件
+  if (show === "offline") {
+    baseWhere.jiraIssueKey = null
     baseWhere.completedAt = null
+  } else if (show === "synced") {
+    baseWhere.jiraIssueKey = { not: null }
   } else if (show === "closed") {
     baseWhere.completedAt = { not: null }
   }
@@ -136,7 +143,7 @@ export default async function TasksPage({ searchParams }: PageProps) {
     statusFilter ||
     overdueOnly ||
     sort !== "created" ||
-    show !== "active"
+    show !== "offline"
   )
 
   return (
@@ -146,11 +153,14 @@ export default async function TasksPage({ searchParams }: PageProps) {
           <div>
             <h1 className="text-2xl font-semibold text-text-primary">任務</h1>
             <p className="mt-1 text-sm text-text-secondary">
+              Jira 還沒起單前的離線記事 — 一旦同步到 Jira 就會從這預設視圖消失，去 Jira 看本尊
+            </p>
+            <p className="mt-1 text-xs text-text-tertiary">
               {hasFilters
                 ? `符合篩選條件 ${sortedActive.length} 筆`
                 : isAdmin
-                  ? `全隊現役任務 ${active.length} 筆${archived.length > 0 ? ` + ${archived.length} 筆已封存` : ""}`
-                  : `指派給你的任務 ${active.length} 筆`}
+                  ? `離線記事 ${active.length} 筆${archived.length > 0 ? `｜+ ${archived.length} 封存` : ""}`
+                  : `你的離線記事 ${active.length} 筆`}
             </p>
           </div>
           {isAdmin && (
