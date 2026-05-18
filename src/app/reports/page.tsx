@@ -8,37 +8,81 @@ import { bucketDefFor, bucketIdFor } from "@/lib/jira-buckets"
 const WEEK_DAYS = 7
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
-function buildPlainText(args: {
-  weekStart: Date
+// 一個 project 的 weekly 報告數據
+interface ProjectReport {
+  projectKey: string // e.g. "BB1"
+  total: number // 該 project 全部撈到的票數（含已完成）
   inProgress: JiraIssue[]
   blocked: JiraIssue[]
   doneThisWeek: JiraIssue[]
   overdue: JiraIssue[]
-}): string {
+}
+
+// 從 issue.key（"BB1-7954"）抽 project key（"BB1"）
+function projectKeyFor(issueKey: string): string {
+  const idx = issueKey.indexOf("-")
+  return idx > 0 ? issueKey.slice(0, idx) : issueKey
+}
+
+function buildPlainText(args: { weekStart: Date; projects: ProjectReport[] }): string {
   const dateStr = `${args.weekStart.getMonth() + 1}/${args.weekStart.getDate()} 起算近 7 天`
   const fmtList = (list: JiraIssue[]) =>
     list.length
       ? list.map((i) => `  - [${i.key}] ${i.summary}（${i.assigneeName}）`).join("\n")
       : "  （無）"
 
-  return [
-    `Taskpulse 週報（${dateStr}）— Jira 視角`,
-    "",
-    `• 進行中：${args.inProgress.length} 張`,
-    `• 卡住：${args.blocked.length} 張`,
-    `• 本週完成：${args.doneThisWeek.length} 張`,
-    `• 已逾期：${args.overdue.length} 張`,
-    "",
-    "卡住的票：",
-    fmtList(args.blocked),
-    "",
-    "本週完成的票：",
-    fmtList(args.doneThisWeek),
-    "",
-    "已逾期的票：",
-    fmtList(args.overdue),
-    "",
-  ].join("\n")
+  const lines: string[] = [`Taskpulse 週報（${dateStr}）— Jira 視角，分專案`, ""]
+
+  for (const p of args.projects) {
+    lines.push(
+      `=== ${p.projectKey}（${p.total} 張）===`,
+      `• 進行中／Review：${p.inProgress.length}　卡住：${p.blocked.length}　本週完成：${p.doneThisWeek.length}　已逾期：${p.overdue.length}`,
+      "",
+      "卡住：",
+      fmtList(p.blocked),
+      "",
+      "本週完成：",
+      fmtList(p.doneThisWeek),
+      "",
+      "已逾期：",
+      fmtList(p.overdue),
+      "",
+    )
+  }
+  return lines.join("\n")
+}
+
+function buildProjectReport(
+  projectKey: string,
+  issues: JiraIssue[],
+  args: {
+    today: Date
+    weekStart: Date
+  },
+): ProjectReport {
+  const r: ProjectReport = {
+    projectKey,
+    total: issues.length,
+    inProgress: [],
+    blocked: [],
+    doneThisWeek: [],
+    overdue: [],
+  }
+  for (const i of issues) {
+    const bucket = bucketIdFor(i.status)
+    if (bucket === "in_progress" || bucket === "review") r.inProgress.push(i)
+    if (/block|hold|卡|阻/i.test(i.status)) r.blocked.push(i)
+    if (bucket === "done" && i.updated) {
+      const u = new Date(i.updated)
+      if (u.getTime() >= args.weekStart.getTime()) r.doneThisWeek.push(i)
+    }
+    if (bucket !== "done" && i.dueDate) {
+      const due = parseDateKey(i.dueDate)
+      if (due && due.getTime() < args.today.getTime()) r.overdue.push(i)
+    }
+  }
+  r.overdue.sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
+  return r
 }
 
 export default async function ReportsPage() {
@@ -52,31 +96,30 @@ export default async function ReportsPage() {
   const jiraResult = await fetchTeamJiraIssues()
   const issues = jiraResult.kind === "ok" ? jiraResult.issues : []
 
-  // 分類
-  const inProgress: JiraIssue[] = []
-  const blocked: JiraIssue[] = []
-  const doneThisWeek: JiraIssue[] = []
-  const overdue: JiraIssue[] = []
-
+  // 依 project key 分組
+  const byProject = new Map<string, JiraIssue[]>()
   for (const i of issues) {
-    const bucket = bucketIdFor(i.status)
-    if (bucket === "in_progress" || bucket === "review") inProgress.push(i)
-    // 卡住關鍵字（Jira 沒固定 status，靠字串猜）
-    if (/block|hold|卡|阻/i.test(i.status)) blocked.push(i)
-    if (bucket === "done" && i.updated) {
-      const u = new Date(i.updated)
-      if (u.getTime() >= weekStart.getTime()) doneThisWeek.push(i)
-    }
-    if (bucket !== "done" && i.dueDate) {
-      const due = parseDateKey(i.dueDate)
-      if (due && due.getTime() < today.getTime()) overdue.push(i)
-    }
+    const pk = projectKeyFor(i.key)
+    const arr = byProject.get(pk)
+    if (arr) arr.push(i)
+    else byProject.set(pk, [i])
   }
 
-  // overdue 排到最前面、deadline 近的優先
-  overdue.sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
+  // 依 project 票數由多到少排
+  const projects: ProjectReport[] = Array.from(byProject.entries())
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([pk, list]) => buildProjectReport(pk, list, { today, weekStart }))
 
-  const plainText = buildPlainText({ weekStart, inProgress, blocked, doneThisWeek, overdue })
+  // 全體總覽（多 project 時才有意義）
+  const overall = {
+    inProgress: projects.reduce((s, p) => s + p.inProgress.length, 0),
+    blocked: projects.reduce((s, p) => s + p.blocked.length, 0),
+    doneThisWeek: projects.reduce((s, p) => s + p.doneThisWeek.length, 0),
+    overdue: projects.reduce((s, p) => s + p.overdue.length, 0),
+  }
+  const showOverall = projects.length > 1
+
+  const plainText = buildPlainText({ weekStart, projects })
 
   return (
     <div className="flex flex-1 flex-col px-6 py-6">
@@ -85,7 +128,7 @@ export default async function ReportsPage() {
           <div>
             <h1 className="text-2xl font-semibold text-text-primary">向上回報摘要</h1>
             <p className="mt-1 text-sm text-text-secondary">
-              近 7 天｜Jira 視角｜admin 專用
+              近 7 天｜Jira 視角｜admin 專用｜共 {projects.length} 個專案 / {issues.length} 張票
               {jiraResult.kind !== "ok" && (
                 <span className="ml-2 text-warning">
                   {jiraResult.kind === "not_configured"
@@ -108,34 +151,29 @@ export default async function ReportsPage() {
           </div>
         </header>
 
-        <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="進行中 / Review" value={inProgress.length} tone="accent" />
-          <StatCard label="卡住" value={blocked.length} tone="danger" />
-          <StatCard label="本週完成" value={doneThisWeek.length} tone="success" />
-          <StatCard label="已逾期" value={overdue.length} tone="warning" />
-        </section>
+        {showOverall && (
+          <section className="rounded-md border border-border-subtle bg-surface px-5 py-4">
+            <h2 className="mb-3 text-sm font-medium text-text-primary">全體總覽</h2>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatTile label="進行中 / Review" value={overall.inProgress} tone="accent" />
+              <StatTile label="卡住" value={overall.blocked} tone="danger" />
+              <StatTile label="本週完成" value={overall.doneThisWeek} tone="success" />
+              <StatTile label="已逾期" value={overall.overdue} tone="warning" />
+            </div>
+          </section>
+        )}
 
-        <Section title="卡住的票" emptyText="目前沒有 status 含「block / 卡 / 阻」的 Jira 票 👌">
-          {blocked.map((i) => (
-            <JiraRow key={i.key} issue={i} tone="warning" />
-          ))}
-        </Section>
-
-        <Section title="已逾期的票" emptyText="目前沒有逾期票 👌">
-          {overdue.map((i) => (
-            <JiraRow key={i.key} issue={i} tone="danger" />
-          ))}
-        </Section>
-
-        <Section title="本週完成的票" emptyText="本週還沒有完成的票。">
-          {doneThisWeek.map((i) => (
-            <JiraRow key={i.key} issue={i} tone="success" />
-          ))}
-        </Section>
+        {projects.length === 0 ? (
+          <p className="rounded-md border border-dashed border-border-default bg-surface px-6 py-12 text-center text-sm text-text-tertiary">
+            目前撈不到任何 Jira 票，無法產生分專案報告。
+          </p>
+        ) : (
+          projects.map((p) => <ProjectCard key={p.projectKey} report={p} />)
+        )}
 
         <section className="rounded-md border border-border-subtle bg-surface px-5 py-4">
-          <h2 className="mb-2 text-sm font-medium text-text-primary">純文字預覽</h2>
-          <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-canvas px-4 py-3 text-xs text-text-secondary">
+          <h2 className="mb-2 text-sm font-medium text-text-primary">純文字預覽（含所有專案）</h2>
+          <pre className="scrollbar-subtle max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-canvas px-4 py-3 text-xs text-text-secondary">
             {plainText}
           </pre>
         </section>
@@ -153,30 +191,60 @@ function parseDateKey(key: string): Date | null {
   return new Date(y, mo - 1, d, 0, 0, 0, 0)
 }
 
-function Section({
+function ProjectCard({ report: p }: { report: ProjectReport }) {
+  return (
+    <article className="rounded-md border border-border-subtle bg-surface px-5 py-4">
+      <header className="mb-3 flex items-baseline justify-between">
+        <h2 className="text-base font-medium text-text-primary">
+          <span className="font-mono text-accent">{p.projectKey}</span>
+          <span className="ml-2 text-xs text-text-tertiary">{p.total} 張</span>
+        </h2>
+      </header>
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <StatTile label="進行中 / Review" value={p.inProgress.length} tone="accent" />
+        <StatTile label="卡住" value={p.blocked.length} tone="danger" />
+        <StatTile label="本週完成" value={p.doneThisWeek.length} tone="success" />
+        <StatTile label="已逾期" value={p.overdue.length} tone="warning" />
+      </div>
+
+      {/* 三段 issue 列表，空的不渲染整段（減少視覺雜訊） */}
+      {p.blocked.length > 0 && <SubSection title="卡住的票" issues={p.blocked} tone="warning" />}
+      {p.overdue.length > 0 && <SubSection title="已逾期的票" issues={p.overdue} tone="danger" />}
+      {p.doneThisWeek.length > 0 && (
+        <SubSection title="本週完成的票" issues={p.doneThisWeek} tone="success" />
+      )}
+
+      {p.blocked.length === 0 && p.overdue.length === 0 && p.doneThisWeek.length === 0 && (
+        <p className="text-xs text-text-tertiary">這個 project 本週沒有需要關注的票 👌</p>
+      )}
+    </article>
+  )
+}
+
+function SubSection({
   title,
-  emptyText,
-  children,
+  issues,
+  tone,
 }: {
   title: string
-  emptyText: string
-  children: React.ReactNode
+  issues: JiraIssue[]
+  tone: "warning" | "success" | "danger"
 }) {
-  const arr = Array.isArray(children) ? children : [children]
-  const isEmpty = arr.flat().filter(Boolean).length === 0
   return (
-    <section className="rounded-md border border-border-subtle bg-surface px-5 py-4">
-      <h2 className="mb-3 text-sm font-medium text-text-primary">{title}</h2>
-      {isEmpty ? (
-        <p className="text-sm text-text-tertiary">{emptyText}</p>
-      ) : (
-        <ul className="space-y-2">{children}</ul>
-      )}
+    <section className="mb-3 last:mb-0">
+      <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-tertiary">
+        {title}（{issues.length}）
+      </h3>
+      <ul className="space-y-2">
+        {issues.map((i) => (
+          <JiraRow key={i.key} issue={i} tone={tone} />
+        ))}
+      </ul>
     </section>
   )
 }
 
-function StatCard({
+function StatTile({
   label,
   value,
   tone,
@@ -192,12 +260,12 @@ function StatCard({
     warning: "text-warning",
   }[tone]
   return (
-    <article className="rounded-md border border-border-subtle bg-surface px-5 py-4">
-      <div className="text-xs uppercase tracking-wide text-text-tertiary">{label}</div>
-      <div className={`mt-1 text-3xl font-semibold ${value > 0 ? toneCls : "text-text-tertiary"}`}>
+    <div className="rounded-md bg-canvas px-3 py-2">
+      <p className="text-[10px] text-text-tertiary">{label}</p>
+      <p className={`text-2xl font-semibold ${value > 0 ? toneCls : "text-text-tertiary"}`}>
         {value}
-      </div>
-    </article>
+      </p>
+    </div>
   )
 }
 
