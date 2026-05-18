@@ -119,7 +119,11 @@ function Body({
   return (
     <>
       {scope === "team" && <TeamJiraSummary issues={result.issues} />}
-      <JiraIssueList issues={result.issues} showAssignee={scope === "team"} />
+      <JiraIssueList
+        issues={result.issues}
+        showAssignee={scope === "team"}
+        view={scope === "team" ? "kanban" : "list"}
+      />
     </>
   )
 }
