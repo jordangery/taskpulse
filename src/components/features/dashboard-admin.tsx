@@ -149,7 +149,8 @@ export async function DashboardAdmin() {
           </Card>
         </section>
 
-        {/* Jira 看板（整排，5-col kanban） */}
+        {/* Jira 看板：先「我的」再「團隊」（admin 自己派單前先看自己手上的單） */}
+        <DashboardJiraWidget scope="mine" />
         <DashboardJiraWidget scope="team" />
 
         <Card title="最近 5 筆進度動態" hint="跨任務 timeline">

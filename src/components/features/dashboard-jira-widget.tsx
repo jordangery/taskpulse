@@ -26,11 +26,13 @@ export async function DashboardJiraWidget({ scope }: Props) {
     <article className="rounded-md border border-border-subtle bg-surface px-5 py-4">
       <header className="mb-3 flex items-baseline justify-between gap-2">
         <div>
-          <h2 className="text-sm font-medium text-text-primary">Jira</h2>
+          <h2 className="text-sm font-medium text-text-primary">
+            {scope === "team" ? "團隊 Jira" : "我的 Jira"}
+          </h2>
           <p className="mt-0.5 text-xs text-text-tertiary">
             {scope === "team"
-              ? "團隊所有成員已連結 Atlassian 後的 Jira 票"
-              : "你在 Atlassian 被指派的 Jira 票"}
+              ? "團隊所有成員的 Jira 票（用你的 Atlassian token 撈各 member 的單）"
+              : "你在 Atlassian 被指派的 Jira 票 — 用來掃哪些還沒派出去"}
           </p>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
