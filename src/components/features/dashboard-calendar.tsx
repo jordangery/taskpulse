@@ -310,11 +310,23 @@ function CalendarCell({
           {isFirstOfMonth && <span className="mr-1 text-[10px] text-text-tertiary">{month}月</span>}
           {day}
         </Link>
-        {isToday && (
-          <span role="img" aria-label="今天">
-            ⭐
-          </span>
-        )}
+        <div className="flex items-center gap-0.5">
+          {event.noteCount > 0 && (
+            <span
+              role="img"
+              aria-label={`${event.noteCount} 則記事`}
+              className="text-[10px]"
+              title={`${event.noteCount} 則記事`}
+            >
+              📌
+            </span>
+          )}
+          {isToday && (
+            <span role="img" aria-label="今天">
+              ⭐
+            </span>
+          )}
+        </div>
       </div>
 
       {event.holiday && (

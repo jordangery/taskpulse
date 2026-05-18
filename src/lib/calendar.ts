@@ -33,6 +33,9 @@ export interface CalendarEvent {
   date: string
   items: CalendarItem[]
   holiday?: string
+  // 這天有幾則 calendar note（任意 user 寫的、team 共享）
+  // 完整內容在 /calendar/[date] 看；dashboard 只顯示有沒有
+  noteCount: number
 }
 
 export interface CalendarData {
@@ -75,7 +78,19 @@ export async function fetchCalendarEvents(userId: string, isAdmin: boolean): Pro
   // Jira：admin 用 team token 撈全部、member 撈自己的
   const jiraPromise = isAdmin ? fetchTeamJiraIssues() : fetchMyJiraIssues(userId)
 
-  const [tasks, jira] = await Promise.all([taskPromise, jiraPromise])
+  // 日曆記事：撈這 28 天範圍內所有 note，groupBy dateKey 拿 count
+  const startKey = toLocalKey(start)
+  const endKey = toLocalKey(addDays(end, -1)) // end 是 exclusive，倒回最後一天
+  const notesCountPromise = prisma.calendarNote.groupBy({
+    by: ["dateKey"],
+    where: { dateKey: { gte: startKey, lte: endKey } },
+    _count: { _all: true },
+  })
+
+  const [tasks, jira, noteCounts] = await Promise.all([taskPromise, jiraPromise, notesCountPromise])
+
+  const noteCountByDate = new Map<string, number>()
+  for (const n of noteCounts) noteCountByDate.set(n.dateKey, n._count._all)
 
   const buckets = new Map<string, CalendarItem[]>()
   for (let i = 0; i < 28; i++) {
@@ -129,6 +144,7 @@ export async function fetchCalendarEvents(userId: string, isAdmin: boolean): Pro
       date,
       items,
       holiday: holidays.get(date),
+      noteCount: noteCountByDate.get(date) ?? 0,
     })),
     todayKey: toLocalKey(today),
     startKey: toLocalKey(start),

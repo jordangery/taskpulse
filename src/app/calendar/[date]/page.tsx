@@ -16,6 +16,7 @@ import { format } from "date-fns"
 import { zhTW } from "date-fns/locale"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { CalendarNoteSection } from "@/components/features/calendar-note-section"
 import { getCurrentUser } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
 import { fetchMyJiraIssues, fetchTeamJiraIssues, type JiraIssue } from "@/lib/jira"
@@ -81,7 +82,19 @@ export default async function CalendarDatePage({ params }: PageProps) {
     },
   })
   const jiraPromise = isAdmin ? fetchTeamJiraIssues() : fetchMyJiraIssues(me.id)
-  const [tasks, jiraResult] = await Promise.all([taskPromise, jiraPromise])
+  const notesPromise = prisma.calendarNote.findMany({
+    where: { dateKey },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      content: true,
+      authorId: true,
+      author: { select: { id: true, name: true } },
+      createdAt: true,
+      updatedAt: true,
+    },
+  })
+  const [tasks, jiraResult, notes] = await Promise.all([taskPromise, jiraPromise, notesPromise])
 
   // 只挑 dueDate 落在當天 + 非已完成的 Jira 票
   const jiraIssues: JiraIssue[] =
@@ -110,40 +123,42 @@ export default async function CalendarDatePage({ params }: PageProps) {
             </span>
           </div>
           <p className="text-sm text-text-secondary">
-            {tasks.length + jiraIssues.length > 0
-              ? `Jira ${jiraIssues.length} 張｜離線記事 ${tasks.length} 筆 在此日到期`
-              : "今日無到期任務"}
+            記事 {notes.length}｜Jira {jiraIssues.length}｜離線任務 {tasks.length}
           </p>
         </header>
 
-        {tasks.length + jiraIssues.length === 0 ? (
-          <EmptyState dateTitle={dateTitle} />
-        ) : (
-          <div className="space-y-6">
-            {jiraIssues.length > 0 && (
-              <section>
-                <h2 className="mb-3 text-sm font-medium text-text-secondary">Jira 票</h2>
-                <div className="space-y-2">
-                  {jiraIssues.map((issue) => (
-                    <JiraCard key={issue.key} issue={issue} />
-                  ))}
-                </div>
-              </section>
-            )}
-            {tasks.length > 0 && (
-              <section>
-                <h2 className="mb-3 text-sm font-medium text-text-secondary">
-                  離線記事（還沒升級到 Jira）
-                </h2>
-                <div className="space-y-2">
-                  {tasks.map((task) => (
-                    <TaskCard key={task.id} task={task} />
-                  ))}
-                </div>
-              </section>
-            )}
-          </div>
-        )}
+        <div className="space-y-6">
+          <CalendarNoteSection
+            dateKey={dateKey}
+            notes={notes}
+            currentUserId={me.id}
+            currentUserRole={me.role}
+          />
+
+          {jiraIssues.length > 0 && (
+            <section>
+              <h2 className="mb-3 text-sm font-medium text-text-secondary">Jira 票</h2>
+              <div className="space-y-2">
+                {jiraIssues.map((issue) => (
+                  <JiraCard key={issue.key} issue={issue} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {tasks.length > 0 && (
+            <section>
+              <h2 className="mb-3 text-sm font-medium text-text-secondary">
+                離線任務（taskpulse 還沒升級到 Jira）
+              </h2>
+              <div className="space-y-2">
+                {tasks.map((task) => (
+                  <TaskCard key={task.id} task={task} />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -226,15 +241,4 @@ function StatusBadge({ status }: { status: string }) {
       ? "bg-warning-subtle text-warning"
       : "bg-info-subtle text-info"
   return <span className={`rounded-full ${tone} px-2 py-0.5 text-xs`}>{status}</span>
-}
-
-function EmptyState({ dateTitle }: { dateTitle: string }) {
-  return (
-    <div className="rounded-md border border-dashed border-border-default bg-surface px-6 py-12 text-center">
-      <p className="text-sm text-text-secondary">{dateTitle} 沒有任何任務到期。</p>
-      <Link href="/tasks" className="mt-4 inline-block text-sm text-accent hover:text-accent-hover">
-        去 /tasks 設新任務 →
-      </Link>
-    </div>
-  )
 }

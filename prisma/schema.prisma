@@ -37,8 +37,26 @@ model User {
   updates       ProgressUpdate[]
   feedbacks     Feedback[]
   notifications Notification[]
+  calendarNotes CalendarNote[]
 
   @@index([archivedAt])
+}
+
+// 日曆記事：跟 Task/Jira 無關的純文字小備忘，掛在某一天上
+// 用途：請假 / 開會 / 出差 / 國定假日備註 / 任何想記但不適合開單的事
+// 權限：任何 user 都可建；只有 author 自己能編輯；author 或 admin 都可刪
+// 可見性：team 共享（沒做 personal/team flag — 小團隊用一鍋共享比較單純）
+model CalendarNote {
+  id        String   @id @default(cuid())
+  dateKey   String   // YYYY-MM-DD（local time）；用 string 而非 DateTime 避免時區出包
+  content   String
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dateKey])
+  @@index([authorId])
 }
 
 model Task {
