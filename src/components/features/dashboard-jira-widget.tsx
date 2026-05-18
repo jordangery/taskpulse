@@ -6,22 +6,26 @@
 // Token-only styling（不可有 hex / bg-white / bg-gray-*）
 
 import { requireUser } from "@/lib/current-user"
-import { fetchMyJiraIssues, fetchTeamJiraIssues } from "@/lib/jira"
+import { fetchMyJiraIssues, fetchTeamJiraIssues, type JiraFetchResult } from "@/lib/jira"
 import { JiraIssueList } from "./dashboard-jira-issue-list"
 import { TeamJiraSummary } from "./dashboard-jira-team-summary"
 import { RefreshButton } from "./refresh-button"
 
 interface Props {
   scope: "mine" | "team"
+  // 父層（dashboard-admin.tsx）已經 fetch 過 team Jira 來算 top stats，
+  // 可以把結果傳進來避免重複 API call
+  result?: JiraFetchResult
 }
 
 const ATLASSIAN_CONSOLE_URL = "https://developer.atlassian.com/console/myapps/"
 
-export async function DashboardJiraWidget({ scope }: Props) {
+export async function DashboardJiraWidget({ scope, result: passed }: Props) {
   const result =
-    scope === "team"
+    passed ??
+    (scope === "team"
       ? await fetchTeamJiraIssues()
-      : await fetchMyJiraIssues((await requireUser()).id)
+      : await fetchMyJiraIssues((await requireUser()).id))
 
   return (
     <article className="rounded-md border border-border-subtle bg-surface px-5 py-4">

@@ -5,7 +5,8 @@ import { retryJiraSyncAll } from "@/lib/actions/tasks"
 import { fetchCalendarEvents } from "@/lib/calendar"
 import { requireAdmin } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
-import { jiraWriteEnabled } from "@/lib/jira"
+import { fetchTeamJiraIssues, type JiraIssue, jiraWriteEnabled } from "@/lib/jira"
+import { bucketIdFor } from "@/lib/jira-buckets"
 import { ChartPeopleTasks } from "./chart-people-tasks"
 import { ChartUpdateFrequency } from "./chart-update-frequency"
 import { DashboardCalendar } from "./dashboard-calendar"
@@ -24,42 +25,51 @@ function formatDayLabel(d: Date): string {
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
-async function fetchPeopleTasks() {
-  const users = await prisma.user.findMany({
-    where: { archivedAt: null },
-    select: {
-      id: true,
-      name: true,
-      _count: { select: { assignedTasks: { where: { archivedAt: null } } } },
-    },
-    orderBy: { name: "asc" },
-  })
-  return users.map((u) => ({ name: u.name, count: u._count.assignedTasks }))
-}
-
-async function fetchUpdateFrequency() {
+// 把 team Jira issues 拆成 3 個 top stats：
+// 1. 每人未完成（依 assignee 分組，排除 done bucket）
+// 2. 近 7 天 Jira 活動（依 updated 日期分桶，回最近 7 天）
+// 3. 本週完成數（done bucket 且 updated 在最近 7 天內）
+function computeJiraTopStats(issues: JiraIssue[]) {
   const today = startOfDay(new Date())
-  const start = new Date(today.getTime() - (WEEK_DAYS - 1) * MS_PER_DAY)
-  const updates = await prisma.progressUpdate.findMany({
-    where: { createdAt: { gte: start } },
-    select: { createdAt: true },
-  })
+  const weekAgoMs = today.getTime() - (WEEK_DAYS - 1) * MS_PER_DAY
 
-  const buckets = new Map<string, number>()
+  const peopleMap = new Map<string, number>()
+  const dayBuckets = new Map<string, number>()
+  let completedThisWeek = 0
+
   for (let i = 0; i < WEEK_DAYS; i++) {
-    const d = new Date(start.getTime() + i * MS_PER_DAY)
-    buckets.set(d.toISOString().slice(0, 10), 0)
-  }
-  for (const u of updates) {
-    const key = startOfDay(u.createdAt).toISOString().slice(0, 10)
-    if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1)
+    const d = new Date(weekAgoMs + i * MS_PER_DAY)
+    dayBuckets.set(d.toISOString().slice(0, 10), 0)
   }
 
-  return Array.from(buckets.entries()).map(([date, count]) => ({
-    date,
-    label: formatDayLabel(new Date(date)),
-    count,
-  }))
+  for (const issue of issues) {
+    const bucket = bucketIdFor(issue.status)
+    if (bucket !== "done") {
+      peopleMap.set(issue.assigneeName, (peopleMap.get(issue.assigneeName) ?? 0) + 1)
+    }
+    if (issue.updated) {
+      const updatedDate = startOfDay(new Date(issue.updated))
+      const key = updatedDate.toISOString().slice(0, 10)
+      if (dayBuckets.has(key)) {
+        dayBuckets.set(key, (dayBuckets.get(key) ?? 0) + 1)
+      }
+      if (bucket === "done" && updatedDate.getTime() >= weekAgoMs) {
+        completedThisWeek++
+      }
+    }
+  }
+
+  return {
+    peopleTasks: Array.from(peopleMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count),
+    freq: Array.from(dayBuckets.entries()).map(([date, count]) => ({
+      date,
+      label: formatDayLabel(new Date(date)),
+      count,
+    })),
+    completedThisWeek,
+  }
 }
 
 async function fetchRecentUpdates() {
@@ -79,16 +89,16 @@ async function fetchRecentUpdates() {
 
 export async function DashboardAdmin() {
   const me = await requireAdmin()
-  const [peopleTasks, freq, unfeedbacked, recent, activeTaskCount, calendar, pendingJiraSync] =
-    await Promise.all([
-      fetchPeopleTasks(),
-      fetchUpdateFrequency(),
-      prisma.progressUpdate.count({ where: { feedbacks: { none: {} } } }),
-      fetchRecentUpdates(),
-      prisma.task.count({ where: { archivedAt: null } }),
-      fetchCalendarEvents(me.id, true),
-      prisma.task.count({ where: { archivedAt: null, jiraIssueKey: null } }),
-    ])
+  const [recent, activeTaskCount, calendar, pendingJiraSync, teamJira] = await Promise.all([
+    fetchRecentUpdates(),
+    prisma.task.count({ where: { archivedAt: null } }),
+    fetchCalendarEvents(me.id, true),
+    prisma.task.count({ where: { archivedAt: null, jiraIssueKey: null } }),
+    fetchTeamJiraIssues(),
+  ])
+  // top 3 卡：純看 Jira 視角；team Jira 沒連上時用空 array 跑（chart 自然顯示 0）
+  const jiraIssues = teamJira.kind === "ok" ? teamJira.issues : []
+  const { peopleTasks, freq, completedThisWeek } = computeJiraTopStats(jiraIssues)
 
   return (
     <div className="flex flex-1 flex-col px-6 py-6">
@@ -96,10 +106,7 @@ export async function DashboardAdmin() {
         <header>
           <h1 className="text-2xl font-semibold text-text-primary">Dashboard</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            全隊 {activeTaskCount} 筆現役任務｜
-            <span className={unfeedbacked > 0 ? "text-warning" : "text-text-tertiary"}>
-              {unfeedbacked} 筆進度尚未回饋
-            </span>
+            全隊 {activeTaskCount} 筆 taskpulse 任務｜Jira {jiraIssues.length} 張在追蹤中
           </p>
         </header>
 
@@ -128,22 +135,22 @@ export async function DashboardAdmin() {
 
         {/* 3-col：兩張 chart + 未獲回饋大數字 */}
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <Card title="每人活躍任務數" hint="未封存任務按 assignee 分組">
+          <Card title="每人未完成 Jira 票" hint="非已完成 bucket，依 assignee 分組">
             <ChartPeopleTasks data={peopleTasks} />
           </Card>
 
-          <Card title="本週進度更新頻率" hint="近 7 天每天的 ProgressUpdate 數量">
+          <Card title="近 7 天 Jira 活動" hint="每天有多少張票被更新（任何狀態變動）">
             <ChartUpdateFrequency data={freq} />
           </Card>
 
-          <Card title="未獲回饋進度" hint="尚無 1:1 回饋的 ProgressUpdate 數">
+          <Card title="本週已完成 Jira 數" hint="近 7 天進入「已完成」bucket 的票數">
             <div className="flex h-24 items-center justify-center">
               <span
                 className={`text-5xl font-semibold ${
-                  unfeedbacked > 0 ? "text-warning" : "text-text-tertiary"
+                  completedThisWeek > 0 ? "text-success" : "text-text-tertiary"
                 }`}
               >
-                {unfeedbacked}
+                {completedThisWeek}
               </span>
             </div>
           </Card>
@@ -151,7 +158,7 @@ export async function DashboardAdmin() {
 
         {/* Jira 看板：先「我的」再「團隊」（admin 自己派單前先看自己手上的單） */}
         <DashboardJiraWidget scope="mine" />
-        <DashboardJiraWidget scope="team" />
+        <DashboardJiraWidget scope="team" result={teamJira} />
 
         <Card title="最近 5 筆進度動態" hint="跨任務 timeline">
           {recent.length === 0 ? (
