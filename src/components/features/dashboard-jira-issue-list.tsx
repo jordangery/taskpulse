@@ -127,6 +127,17 @@ function IssueRow({ issue, showAssignee }: { issue: JiraIssue; showAssignee: boo
             {issue.key}
           </span>
           <span className={`rounded-full px-2 py-0.5 ${b.cls}`}>{issue.status}</span>
+          {issue.fixVersions.length > 0 && (
+            <span
+              className="rounded-full bg-info-subtle px-2 py-0.5 text-info"
+              title={issue.fixVersions.join(", ")}
+            >
+              {issue.fixVersions[0]}
+              {issue.fixVersions.length > 1 && (
+                <span className="ml-0.5 opacity-75">+{issue.fixVersions.length - 1}</span>
+              )}
+            </span>
+          )}
           <p className="min-w-0 flex-1 truncate text-sm text-text-primary">{issue.summary}</p>
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-text-tertiary">
@@ -216,6 +227,15 @@ function KanbanCard({ issue, showAssignee }: { issue: JiraIssue; showAssignee: b
           <span className={`truncate rounded-full px-1.5 py-0 ${b.cls}`} title={issue.status}>
             {issue.status}
           </span>
+          {issue.fixVersions.length > 0 && (
+            <span
+              className="truncate rounded-full bg-info-subtle px-1.5 py-0 text-info"
+              title={issue.fixVersions.join(", ")}
+            >
+              {issue.fixVersions[0]}
+              {issue.fixVersions.length > 1 && `+${issue.fixVersions.length - 1}`}
+            </span>
+          )}
         </div>
         <p className="mt-1 line-clamp-2 text-xs text-text-primary">{issue.summary}</p>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-text-tertiary">

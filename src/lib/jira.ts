@@ -18,7 +18,7 @@ import { prisma } from "./db"
 
 const ATLASSIAN_TOKEN_URL = "https://auth.atlassian.com/oauth/token"
 const ATLASSIAN_RESOURCES_URL = "https://api.atlassian.com/oauth/token/accessible-resources"
-const JIRA_FIELDS = "summary,status,priority,issuetype,duedate,assignee,updated"
+const JIRA_FIELDS = "summary,status,priority,issuetype,duedate,assignee,updated,fixVersions"
 const JIRA_MAX_RESULTS = 50
 
 export interface JiraIssue {
@@ -31,6 +31,7 @@ export interface JiraIssue {
   updated: string | null // ISO timestamp (Jira 回的 "updated" 欄位)，用來判斷久未更新
   url: string // browse URL
   assigneeName: string // 對應 taskpulse 名字（找不到則用 Atlassian displayName）
+  fixVersions: string[] // 預定發佈版本名（可能有多個），讓 user 看出輕重緩急
 }
 
 export type JiraFetchResult =
@@ -67,6 +68,7 @@ interface JiraSearchResponse {
         emailAddress?: string
         displayName?: string
       } | null
+      fixVersions?: Array<{ name?: string }> | null
     }
   }>
 }
@@ -212,6 +214,8 @@ async function fetchIssuesForCloud(
       updated: issue.fields.updated ?? null,
       url: `${siteUrl.replace(/\/$/, "")}/browse/${issue.key}`,
       assigneeName: taskpulseName ?? fallbackName,
+      fixVersions:
+        issue.fields.fixVersions?.map((v) => v.name).filter((n): n is string => Boolean(n)) ?? [],
     }
   })
 }
@@ -520,6 +524,112 @@ export async function transitionJiraIssue(
       return { kind: "error", message: `transition ${postRes.status} ${t.slice(0, 200)}` }
     }
     return { kind: "ok", transitionName: match.name }
+  } catch (err) {
+    return { kind: "error", message: err instanceof Error ? err.message : "未知錯誤" }
+  }
+}
+
+// ---------- Project versions（每個專案的最新版號）----------
+
+export interface ProjectVersionSummary {
+  projectKey: string
+  projectName: string
+  // 最近一個 released=true 的 version（依 releaseDate 倒序）
+  latestReleased: { name: string; releaseDate: string | null } | null
+  // 最近一個 released=false 的 version（依 startDate / id 排序，當作「開發中」的 version）
+  nextUnreleased: { name: string; startDate: string | null } | null
+}
+
+export type ProjectVersionsResult =
+  | { kind: "not_configured" }
+  | { kind: "not_connected" }
+  | { kind: "error"; message: string }
+  | { kind: "ok"; projects: ProjectVersionSummary[] }
+
+/**
+ * 用 admin token 撈所有 accessible project 的最新版號
+ * 一個 project = 一個額外 API call（搜版本），用 Promise.allSettled 平行化
+ */
+export async function fetchProjectVersionSummary(): Promise<ProjectVersionsResult> {
+  if (!envConfigured()) return { kind: "not_configured" }
+
+  const adminAccount = await prisma.account.findFirst({
+    where: { provider: "atlassian", user: { role: "admin" } },
+    select: { id: true, access_token: true, refresh_token: true, expires_at: true },
+  })
+  if (!adminAccount) return { kind: "not_connected" }
+  const token = await ensureAccessToken(adminAccount)
+  if (!token) return { kind: "error", message: "Admin Atlassian token 失效" }
+
+  try {
+    const resources = await fetchAccessibleResources(token)
+    if (resources.length === 0) return { kind: "ok", projects: [] }
+    const { id: cloudId } = resources[0]
+
+    // 撈所有 project（最多 50；如果你 org 超過要分頁，再加 pagination）
+    const projectsRes = await fetch(
+      `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/project/search?maxResults=50`,
+      {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        cache: "no-store",
+      },
+    )
+    if (!projectsRes.ok) {
+      return { kind: "error", message: `project/search ${projectsRes.status}` }
+    }
+    const projectsData = (await projectsRes.json()) as {
+      values?: Array<{ key: string; name: string }>
+    }
+    const projects = projectsData.values ?? []
+
+    const summaries = await Promise.all(
+      projects.map(async (p): Promise<ProjectVersionSummary> => {
+        const summary: ProjectVersionSummary = {
+          projectKey: p.key,
+          projectName: p.name,
+          latestReleased: null,
+          nextUnreleased: null,
+        }
+        try {
+          // 拿最新 released（依 releaseDate desc 取 1）
+          const r1 = await fetch(
+            `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/project/${p.key}/version?status=released&orderBy=-releaseDate&maxResults=1`,
+            {
+              headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+              cache: "no-store",
+            },
+          )
+          if (r1.ok) {
+            const d = (await r1.json()) as {
+              values?: Array<{ name: string; releaseDate?: string }>
+            }
+            const v = d.values?.[0]
+            if (v) summary.latestReleased = { name: v.name, releaseDate: v.releaseDate ?? null }
+          }
+          // 拿最新 unreleased（開發中；依 startDate desc 取 1）
+          const r2 = await fetch(
+            `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/project/${p.key}/version?status=unreleased&orderBy=-startDate&maxResults=1`,
+            {
+              headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+              cache: "no-store",
+            },
+          )
+          if (r2.ok) {
+            const d = (await r2.json()) as {
+              values?: Array<{ name: string; startDate?: string }>
+            }
+            const v = d.values?.[0]
+            if (v) summary.nextUnreleased = { name: v.name, startDate: v.startDate ?? null }
+          }
+        } catch {
+          // 個別專案失敗就讓欄位是 null
+        }
+        return summary
+      }),
+    )
+    // 過濾掉完全沒版本資料的 project（沒設 Versions 的 project）
+    const filtered = summaries.filter((s) => s.latestReleased || s.nextUnreleased)
+    return { kind: "ok", projects: filtered }
   } catch (err) {
     return { kind: "error", message: err instanceof Error ? err.message : "未知錯誤" }
   }

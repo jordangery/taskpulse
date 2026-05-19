@@ -5,12 +5,18 @@ import { retryJiraSyncAll } from "@/lib/actions/tasks"
 import { fetchCalendarEvents } from "@/lib/calendar"
 import { requireAdmin } from "@/lib/current-user"
 import { prisma } from "@/lib/db"
-import { fetchTeamJiraIssues, type JiraIssue, jiraWriteEnabled } from "@/lib/jira"
+import {
+  fetchProjectVersionSummary,
+  fetchTeamJiraIssues,
+  type JiraIssue,
+  jiraWriteEnabled,
+} from "@/lib/jira"
 import { bucketIdFor } from "@/lib/jira-buckets"
 import { ChartPeopleTasks } from "./chart-people-tasks"
 import { ChartUpdateFrequency } from "./chart-update-frequency"
 import { DashboardCalendar } from "./dashboard-calendar"
 import { DashboardJiraWidget } from "./dashboard-jira-widget"
+import { ProjectVersionsBar } from "./project-versions-bar"
 
 const WEEK_DAYS = 7
 const MS_PER_DAY = 24 * 60 * 60 * 1000
@@ -89,13 +95,15 @@ async function fetchRecentUpdates() {
 
 export async function DashboardAdmin() {
   const me = await requireAdmin()
-  const [recent, activeTaskCount, calendar, pendingJiraSync, teamJira] = await Promise.all([
-    fetchRecentUpdates(),
-    prisma.task.count({ where: { archivedAt: null } }),
-    fetchCalendarEvents(me.id, true),
-    prisma.task.count({ where: { archivedAt: null, jiraIssueKey: null } }),
-    fetchTeamJiraIssues(),
-  ])
+  const [recent, activeTaskCount, calendar, pendingJiraSync, teamJira, projectVersions] =
+    await Promise.all([
+      fetchRecentUpdates(),
+      prisma.task.count({ where: { archivedAt: null } }),
+      fetchCalendarEvents(me.id, true),
+      prisma.task.count({ where: { archivedAt: null, jiraIssueKey: null } }),
+      fetchTeamJiraIssues(),
+      fetchProjectVersionSummary(),
+    ])
   // top 3 卡：純看 Jira 視角；team Jira 沒連上時用空 array 跑（chart 自然顯示 0）
   const jiraIssues = teamJira.kind === "ok" ? teamJira.issues : []
   const { peopleTasks, freq, completedThisWeek } = computeJiraTopStats(jiraIssues)
@@ -109,6 +117,8 @@ export async function DashboardAdmin() {
             全隊 {activeTaskCount} 筆 taskpulse 任務｜Jira {jiraIssues.length} 張在追蹤中
           </p>
         </header>
+
+        <ProjectVersionsBar result={projectVersions} />
 
         {jiraWriteEnabled() && pendingJiraSync > 0 && (
           <form
