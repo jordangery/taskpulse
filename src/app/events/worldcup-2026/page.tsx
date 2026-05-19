@@ -50,6 +50,53 @@ function daysFromNowTo(target: Date): number {
   return Math.round((t.getTime() - today.getTime()) / (24 * 60 * 60 * 1000))
 }
 
+// 班表格子裡的縮寫（cell 只有 26px 寬，用單字）
+const CELL_LABEL: Record<Exclude<ShiftCode, "off">, string> = {
+  M: "早",
+  N: "晚",
+  H: "加",
+}
+
+// 根據比賽日期 + 時間，找出當下值班的人
+// 班別時段：
+//   M 早班  8 ~ 10
+//   N 晚班  23 ~ 隔天 8（跨日，半夜的賽事要往前一天找 N）
+//   H 假日加班  9 ~ 14
+function onDutyAt(
+  matchDate: string,
+  matchTime: string,
+): {
+  iOS: { name: string; shift: Exclude<ShiftCode, "off"> }[]
+  Android: { name: string; shift: Exclude<ShiftCode, "off"> }[]
+} {
+  const hh = Number.parseInt(matchTime.split(":")[0] ?? "0", 10)
+  const dateIdx = DATES.indexOf(matchDate as (typeof DATES)[number])
+  const result: ReturnType<typeof onDutyAt> = { iOS: [], Android: [] }
+  if (dateIdx < 0) return result
+
+  for (const team of TEAMS) {
+    for (const member of team.members) {
+      const today = member.shifts[dateIdx]
+      const yesterday = dateIdx > 0 ? member.shifts[dateIdx - 1] : "off"
+
+      let active: Exclude<ShiftCode, "off"> | null = null
+      // 0:00-7:59 → 昨晚的 N 還沒下班
+      if (hh < 8 && yesterday === "N") active = "N"
+      // 23:00 之後 → 今天的 N 剛上線
+      else if (hh >= 23 && today === "N") active = "N"
+      // 8:00-9:59 → 早班
+      else if (hh >= 8 && hh < 10 && today === "M") active = "M"
+      // 9:00-13:59 → 假日加班
+      else if (hh >= 9 && hh < 14 && today === "H") active = "H"
+
+      if (active) {
+        result[team.team].push({ name: member.name, shift: active })
+      }
+    }
+  }
+  return result
+}
+
 export default function WorldCup2026Page() {
   const daysToStart = daysFromNowTo(TOURNAMENT_START)
   const daysToEnd = daysFromNowTo(TOURNAMENT_END)
@@ -196,35 +243,75 @@ export default function WorldCup2026Page() {
             tail="從開幕到捧盃 · 14 場別錯過"
           />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {HEADLINE_MATCHES.map((m) => (
-              <div
-                key={`${m.date}-${m.time}-${m.title}`}
-                className="group rounded-lg px-4 py-3 transition-transform hover:scale-[1.02]"
-                style={{
-                  background:
-                    "linear-gradient(135deg, rgba(76, 0, 153, 0.25), rgba(20, 0, 40, 0.6))",
-                  border: "1px solid rgba(255, 20, 147, 0.35)",
-                  boxShadow:
-                    "0 0 14px rgba(255, 20, 147, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
-                }}
-              >
-                <div className="flex items-baseline justify-between">
-                  <span
-                    className="font-mono text-sm font-bold text-pink-300"
-                    style={{ textShadow: "0 0 8px rgba(255,20,147,0.7)" }}
+            {HEADLINE_MATCHES.map((m) => {
+              const duty = onDutyAt(m.date, m.time)
+              const totalOn = duty.iOS.length + duty.Android.length
+              return (
+                <div
+                  key={`${m.date}-${m.time}-${m.title}`}
+                  className="group relative rounded-lg px-4 py-3 transition-transform hover:scale-[1.02]"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(76, 0, 153, 0.25), rgba(20, 0, 40, 0.6))",
+                    border: "1px solid rgba(255, 20, 147, 0.35)",
+                    boxShadow:
+                      "0 0 14px rgba(255, 20, 147, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+                  }}
+                >
+                  <div className="flex items-baseline justify-between">
+                    <span
+                      className="font-mono text-sm font-bold text-pink-300"
+                      style={{ textShadow: "0 0 8px rgba(255,20,147,0.7)" }}
+                    >
+                      {m.date}
+                    </span>
+                    <span className="text-xs text-amber-200/70">{m.time}</span>
+                  </div>
+                  <p className="mt-1 text-base font-bold text-amber-100">{m.title}</p>
+                  {m.stage && (
+                    <p className="mt-0.5 text-[11px] uppercase tracking-wider text-amber-300/60">
+                      {m.stage}
+                    </p>
+                  )}
+                  <p
+                    className="mt-2 text-[10px] uppercase tracking-widest text-cyan-300/70"
+                    style={{ textShadow: "0 0 6px rgba(0,229,255,0.5)" }}
                   >
-                    {m.date}
-                  </span>
-                  <span className="text-xs text-amber-200/70">{m.time}</span>
-                </div>
-                <p className="mt-1 text-base font-bold text-amber-100">{m.title}</p>
-                {m.stage && (
-                  <p className="mt-0.5 text-[11px] uppercase tracking-wider text-amber-300/60">
-                    {m.stage}
+                    {totalOn > 0 ? `🎧 hover 看 ${totalOn} 位值班` : "🌙 此時段無人值班"}
                   </p>
-                )}
-              </div>
-            ))}
+
+                  {/* hover tooltip — 顯示當下值班 */}
+                  <div
+                    className="invisible absolute left-0 right-0 top-full z-30 mt-2 rounded-lg px-3.5 py-3 opacity-0 transition-opacity duration-150 group-hover:visible group-hover:opacity-100"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, rgba(15, 0, 30, 0.97), rgba(40, 0, 70, 0.97))",
+                      border: "1px solid rgba(0, 229, 255, 0.55)",
+                      boxShadow:
+                        "0 0 22px rgba(0, 229, 255, 0.4), 0 10px 28px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.08)",
+                      backdropFilter: "blur(8px)",
+                    }}
+                  >
+                    <p
+                      className="mb-2 text-[10px] uppercase tracking-[0.3em] text-cyan-300"
+                      style={{ textShadow: "0 0 8px rgba(0,229,255,0.7)" }}
+                    >
+                      ★ ON DUTY · {m.date} {m.time}
+                    </p>
+                    {totalOn === 0 ? (
+                      <p className="text-xs text-amber-100/60">這個時段沒有人在班 — 注意覆蓋</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {duty.iOS.length > 0 && <DutyLine team="iOS" people={duty.iOS} />}
+                        {duty.Android.length > 0 && (
+                          <DutyLine team="Android" people={duty.Android} />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </section>
 
@@ -312,6 +399,46 @@ function SectionTitle({ kicker, title, tail }: { kicker: string; title: string; 
       </h2>
       {tail && <p className="mt-1 text-sm text-amber-100/60">{tail}</p>}
     </header>
+  )
+}
+
+function DutyLine({
+  team,
+  people,
+}: {
+  team: "iOS" | "Android"
+  people: { name: string; shift: Exclude<ShiftCode, "off"> }[]
+}) {
+  const teamColor = team === "iOS" ? "#FF6EC4" : "#00E5FF"
+  const teamLabel = team === "iOS" ? "📱 iOS" : "🤖 Android"
+  return (
+    <div>
+      <p
+        className="text-[10px] font-bold uppercase tracking-wider"
+        style={{ color: teamColor, textShadow: `0 0 6px ${teamColor}88` }}
+      >
+        {teamLabel}
+      </p>
+      <div className="mt-1 flex flex-wrap gap-1.5">
+        {people.map((p) => {
+          const c = SHIFT_COLORS[p.shift]
+          return (
+            <span
+              key={`${team}-${p.name}`}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold"
+              style={{
+                background: c.bg,
+                color: c.text,
+                boxShadow: c.ring,
+              }}
+            >
+              {p.name}
+              <span className="text-[9px] opacity-75">·{CELL_LABEL[p.shift]}</span>
+            </span>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -424,7 +551,7 @@ function ScheduleGrid({
                       style={{
                         background: c.bg,
                         color: c.text,
-                        boxShadow: s === "off" ? c.ring : c.ring,
+                        boxShadow: c.ring,
                         borderBottom: "1px solid rgba(0,0,0,0.4)",
                         textAlign: "center",
                         fontSize: "10px",
@@ -433,7 +560,7 @@ function ScheduleGrid({
                         minWidth: "26px",
                       }}
                     >
-                      {s === "off" ? "" : s}
+                      {s === "off" ? "" : CELL_LABEL[s]}
                     </td>
                   )
                 })}

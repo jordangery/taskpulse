@@ -32,6 +32,9 @@ export function AppHeader({ user, notifications }: AppHeaderProps) {
             <Link href="/tasks" className="text-text-secondary hover:text-text-primary">
               任務
             </Link>
+            <Link href="/events" className="text-text-secondary hover:text-text-primary">
+              事件
+            </Link>
             {user.role === "admin" && (
               <>
                 <Link href="/members" className="text-text-secondary hover:text-text-primary">
