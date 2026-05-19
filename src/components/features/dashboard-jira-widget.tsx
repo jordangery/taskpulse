@@ -127,6 +127,9 @@ function Body({
         issues={result.issues}
         showAssignee={scope === "team"}
         view={scope === "team" ? "kanban" : "list"}
+        // 我的 Jira：預設 chip 落在「開放」上 — 那是 admin 自己手上還沒派 / 還沒開始的單，
+        // 進 dashboard 第一眼最想看的就是這欄
+        initialFilter={scope === "mine" ? "open" : null}
       />
     </>
   )

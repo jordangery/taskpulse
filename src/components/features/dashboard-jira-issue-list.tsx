@@ -25,9 +25,11 @@ interface Props {
   issues: JiraIssue[]
   showAssignee: boolean
   view: "list" | "kanban"
+  // list view 初始 filter；undefined / null = 全部。預設 null
+  initialFilter?: BucketId | null
 }
 
-export function JiraIssueList({ issues, showAssignee, view }: Props) {
+export function JiraIssueList({ issues, showAssignee, view, initialFilter = null }: Props) {
   // 永遠先依 bucket 分群（kanban 直接用；list view 也用來算 chip count）
   const byBucket = useMemo(() => {
     const m: Record<BucketId, JiraIssue[]> = {
@@ -44,7 +46,14 @@ export function JiraIssueList({ issues, showAssignee, view }: Props) {
   if (view === "kanban") {
     return <KanbanView byBucket={byBucket} showAssignee={showAssignee} />
   }
-  return <ListView issues={issues} byBucket={byBucket} showAssignee={showAssignee} />
+  return (
+    <ListView
+      issues={issues}
+      byBucket={byBucket}
+      showAssignee={showAssignee}
+      initialFilter={initialFilter}
+    />
+  )
 }
 
 // ---------- LIST VIEW (chip + 單欄列表) ----------
@@ -53,12 +62,14 @@ function ListView({
   issues,
   byBucket,
   showAssignee,
+  initialFilter,
 }: {
   issues: JiraIssue[]
   byBucket: Record<BucketId, JiraIssue[]>
   showAssignee: boolean
+  initialFilter: BucketId | null
 }) {
-  const [filter, setFilter] = useState<BucketId | null>(null)
+  const [filter, setFilter] = useState<BucketId | null>(initialFilter)
   const filtered = filter ? byBucket[filter] : issues
 
   return (
