@@ -335,16 +335,6 @@ function CalendarCell({
           {day}
         </Link>
         <div className="flex items-center gap-0.5">
-          {event.events.length > 0 && (
-            <span
-              role="img"
-              aria-label={`${event.events.length} 件事件`}
-              className="text-[10px]"
-              title={event.events.map((e) => e.title).join("\n")}
-            >
-              📅
-            </span>
-          )}
           {event.noteCount > 0 && (
             <span
               role="img"
@@ -362,6 +352,29 @@ function CalendarCell({
           )}
         </div>
       </div>
+
+      {/* 事件：在 cell 內用整段彩色 chip 顯示，明顯比右上角小 emoji 醒目
+       * compact (季 view) 沒空間 → 退回有色 dot
+       * 多個事件：顯示第一個 title + "+N" */}
+      {event.events.length > 0 &&
+        (compact ? (
+          <span
+            role="img"
+            aria-label={`${event.events.length} 件事件`}
+            className="absolute right-0.5 bottom-0.5 h-1.5 w-1.5 rounded-full bg-info"
+            title={event.events.map((e) => e.title).join("\n")}
+          />
+        ) : (
+          <div
+            className="line-clamp-1 rounded-sm bg-info-subtle px-1 py-0.5 text-[10px] font-medium leading-tight text-info"
+            title={event.events.map((e) => e.title).join("\n")}
+          >
+            📅 {event.events[0].title}
+            {event.events.length > 1 && (
+              <span className="ml-0.5 opacity-75">+{event.events.length - 1}</span>
+            )}
+          </div>
+        ))}
 
       {!compact && event.holiday && (
         <span className="line-clamp-1 text-[10px] leading-tight text-info" title={event.holiday}>
