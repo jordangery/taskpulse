@@ -240,7 +240,7 @@ export default function WorldCup2026Page() {
           <SectionTitle
             kicker="HIGHLIGHT MATCHES"
             title="關鍵戰役"
-            tail="從開幕到捧盃 · 14 場別錯過"
+            tail={`開幕到捧盃 · ${HEADLINE_MATCHES.length} 場別錯過 · 全部以台北時間 (UTC+8) 表示`}
           />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {HEADLINE_MATCHES.map((m) => {

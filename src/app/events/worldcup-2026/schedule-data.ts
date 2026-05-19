@@ -967,28 +967,135 @@ export const TEAMS: TeamSchedule[] = [
   },
 ]
 
-// 開幕到冠軍戰的重點賽事（從 CSV 對戰列拆出來）
+// 開幕到冠軍戰的重點賽事
+// 來源：2025/12/5 華盛頓抽籤後的正式賽程（FIFA + Wikipedia 交叉比對）
+// 時間：全部換算成「台北時區」(UTC+8)；美東時間 (EDT, UTC-4) + 12 小時 = 台北
+//   例：6/11 15:00 ET 開幕戰 → 6/12 03:00 Taipei
 export interface HeadlineMatch {
-  date: string // "6/11" 之類
-  time: string // "03:00"
+  date: string // "6/12" 之類（台北日期）
+  time: string // "03:00"（台北時間）
   title: string // 顯示用
-  stage?: string // 副標
+  stage?: string // 副標：組別 / 場地 / 階段
 }
 
 export const HEADLINE_MATCHES: HeadlineMatch[] = [
-  { date: "6/11", time: "23:00", title: "🇨🇦🇲🇽🇺🇸 開幕戰夜", stage: "晚班 23-8 啟動" },
-  { date: "6/13", time: "03:00", title: "墨西哥 vs 南非", stage: "Group A" },
-  { date: "6/14", time: "06:00", title: "巴西 vs 摩洛哥", stage: "Group C" },
-  { date: "6/15", time: "03:00", title: "加拿大 vs 波士尼亞", stage: "Group B" },
-  { date: "6/16", time: "09:00", title: "美國 vs 巴拉圭", stage: "Group D" },
-  { date: "6/18", time: "04:00", title: "英格蘭 vs 克羅埃西亞", stage: "Group L" },
-  { date: "6/20", time: "01:00", title: "葡萄牙 vs 民主剛果", stage: "Group K" },
-  { date: "6/22", time: "01:00", title: "阿根廷 vs 奧地利", stage: "Group J" },
-  { date: "6/27", time: "03:00", title: "比利時 vs 伊朗", stage: "Group G" },
-  { date: "7/4", time: "01:00", title: "🔥 R32 開戰", stage: "32 強進 16" },
-  { date: "7/11", time: "04:00", title: "QF1", stage: "八強首戰" },
-  { date: "7/15", time: "03:00", title: "SF1", stage: "準決賽" },
-  { date: "7/16", time: "03:00", title: "SF2", stage: "準決賽" },
-  { date: "7/18", time: "05:00", title: "🥉 季軍戰" },
-  { date: "7/19", time: "03:00", title: "🏆 冠軍戰", stage: "FINAL — Vegas Lights ON" },
+  // ─── 開幕（阿茲特克球場，墨西哥城）
+  {
+    date: "6/12",
+    time: "03:00",
+    title: "🇲🇽 墨西哥 vs 🇿🇦 南非",
+    stage: "A 組 · 開幕戰 · Estadio Azteca",
+  },
+  // ─── 主辦三國全亮相
+  {
+    date: "6/13",
+    time: "03:00",
+    title: "🇨🇦 加拿大 vs 🇧🇦 波士尼亞",
+    stage: "B 組 · BMO Field 多倫多",
+  },
+  {
+    date: "6/13",
+    time: "09:00",
+    title: "🇺🇸 美國 vs 🇵🇾 巴拉圭",
+    stage: "D 組 · SoFi Stadium 洛杉磯",
+  },
+  // ─── 強權登場
+  {
+    date: "6/14",
+    time: "06:00",
+    title: "🇧🇷 巴西 vs 🇲🇦 摩洛哥",
+    stage: "C 組",
+  },
+  {
+    date: "6/15",
+    time: "04:00",
+    title: "🇳🇱 荷蘭 vs 🇯🇵 日本",
+    stage: "F 組 · 亞洲視角必看",
+  },
+  {
+    date: "6/16",
+    time: "00:00",
+    title: "🇪🇸 西班牙 vs 🇨🇻 維德角",
+    stage: "H 組 · 賽前排名第一",
+  },
+  {
+    date: "6/17",
+    time: "03:00",
+    title: "🇫🇷 法國 vs 🇸🇳 塞內加爾",
+    stage: "I 組",
+  },
+  {
+    date: "6/17",
+    time: "09:00",
+    title: "🇦🇷 阿根廷 vs 🇩🇿 阿爾及利亞",
+    stage: "J 組 · 衛冕冠軍出戰",
+  },
+  {
+    date: "6/18",
+    time: "01:00",
+    title: "🇵🇹 葡萄牙 vs 🇨🇩 民主剛果",
+    stage: "K 組",
+  },
+  {
+    date: "6/18",
+    time: "04:00",
+    title: "🏴󠁧󠁢󠁥󠁮󠁧󠁿 英格蘭 vs 🇭🇷 克羅埃西亞",
+    stage: "L 組 · 卡達世盃復刻",
+  },
+  // ─── 主辦三國第二輪
+  {
+    date: "6/19",
+    time: "09:00",
+    title: "🇲🇽 墨西哥 vs 🇰🇷 南韓",
+    stage: "A 組 第 2 輪",
+  },
+  {
+    date: "6/20",
+    time: "03:00",
+    title: "🇺🇸 美國 vs 🇦🇺 澳洲",
+    stage: "D 組 第 2 輪",
+  },
+  // ─── 淘汰賽（FIFA 公佈時刻表）
+  {
+    date: "6/29",
+    time: "03:00",
+    title: "🔥 R32 開戰",
+    stage: "首場 32 強 · SoFi 洛杉磯",
+  },
+  {
+    date: "7/5",
+    time: "01:00",
+    title: "🎯 R16 開戰",
+    stage: "16 強進 8 · NRG 休斯頓",
+  },
+  {
+    date: "7/10",
+    time: "05:00",
+    title: "QF1 · 八強首戰",
+    stage: "Gillette Stadium 波士頓郊區",
+  },
+  {
+    date: "7/15",
+    time: "03:00",
+    title: "SF1 · 準決賽",
+    stage: "AT&T Stadium 達拉斯",
+  },
+  {
+    date: "7/16",
+    time: "04:00",
+    title: "SF2 · 準決賽",
+    stage: "Mercedes-Benz 亞特蘭大",
+  },
+  {
+    date: "7/19",
+    time: "06:00",
+    title: "🥉 季軍戰",
+    stage: "Hard Rock Stadium 邁阿密",
+  },
+  {
+    date: "7/20",
+    time: "04:00",
+    title: "🏆 冠軍戰",
+    stage: "FINAL · MetLife 紐澤西 — Vegas Lights ON",
+  },
 ]
