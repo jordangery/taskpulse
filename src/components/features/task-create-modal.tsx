@@ -54,21 +54,24 @@ export function TaskCreateModal({ assignees }: Props) {
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: dialog 原生 Esc 已關閉，backdrop click 是滑鼠專屬便利功能不需 key event */}
       <dialog
         ref={dialogRef}
-        // 原生 dialog 預設置中、自帶 backdrop；token-only 配色覆寫 backdrop 透明度
-        className="w-full max-w-lg rounded-md border border-border-default bg-surface p-0 backdrop:bg-text-primary backdrop:opacity-40"
+        // 原生 <dialog> 在 Tailwind preflight 下會被吃 margin、瀏覽器 default centering 失效
+        // 改用 fixed + inset-0 + m-auto + h-fit 手動置中，背景明確指定 bg-surface + text token
+        // shadow-xl 讓視覺浮起來、跟背景區隔
+        // backdrop:bg-text-primary/50 比 0.4 opacity 更顯眼，跟主題色保持一致
+        className="fixed inset-0 m-auto h-fit max-h-[90vh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-lg border border-border-default bg-surface p-0 text-text-primary shadow-xl backdrop:bg-text-primary/50 backdrop:backdrop-blur-sm"
         onClick={(e) => {
           // 點 backdrop（dialog 本體之外）關閉
           if (e.target === dialogRef.current) close()
         }}
       >
         <div className="px-6 py-5">
-          <header className="mb-4 flex items-center justify-between">
+          <header className="mb-4 flex items-center justify-between border-b border-border-subtle pb-3">
             <h2 className="text-lg font-semibold text-text-primary">新增任務</h2>
             <button
               type="button"
               onClick={close}
               aria-label="關閉"
-              className="rounded-md px-2 py-0.5 text-text-tertiary hover:bg-subtle hover:text-text-primary"
+              className="rounded-md px-2 py-0.5 text-base text-text-tertiary hover:bg-subtle hover:text-text-primary"
             >
               ✕
             </button>
