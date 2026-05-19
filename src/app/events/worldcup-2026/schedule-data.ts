@@ -976,6 +976,7 @@ export interface HeadlineMatch {
   time: string // "03:00"（台北時間）
   title: string // 顯示用
   stage?: string // 副標：組別 / 場地 / 階段
+  wide?: boolean // 在 grid 佔滿一整列（冠軍戰用，避免最後一排空格）
 }
 
 export const HEADLINE_MATCHES: HeadlineMatch[] = [
@@ -1097,5 +1098,6 @@ export const HEADLINE_MATCHES: HeadlineMatch[] = [
     time: "04:00",
     title: "🏆 冠軍戰",
     stage: "FINAL · MetLife 紐澤西 — Vegas Lights ON",
+    wide: true,
   },
 ]

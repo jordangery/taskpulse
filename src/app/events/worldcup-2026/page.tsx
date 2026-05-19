@@ -105,12 +105,42 @@ export default function WorldCup2026Page() {
 
   return (
     <div
-      className="relative -mx-6 -my-6 min-h-screen overflow-hidden px-6 py-10"
+      className="vegas-scroll fixed inset-0 z-50 overflow-y-auto overflow-x-hidden px-6 py-10"
       style={{
         background: "radial-gradient(ellipse at top, #2a0040 0%, #0a0014 45%, #000000 100%)",
         color: "#fff",
       }}
     >
+      {/* 主題化 scrollbar — 套用整頁 & 排班表 */}
+      <style>{`
+        .vegas-scroll::-webkit-scrollbar {
+          width: 10px;
+          height: 10px;
+        }
+        .vegas-scroll::-webkit-scrollbar-track {
+          background: linear-gradient(180deg, rgba(20, 0, 40, 0.7), rgba(0, 0, 0, 0.85));
+          border-radius: 5px;
+          box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.6);
+        }
+        .vegas-scroll::-webkit-scrollbar-thumb {
+          background: linear-gradient(135deg, #FFD700 0%, #FF1493 50%, #00E5FF 100%);
+          border-radius: 5px;
+          border: 1px solid rgba(0, 0, 0, 0.5);
+          box-shadow: 0 0 8px rgba(255, 215, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+        }
+        .vegas-scroll::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(135deg, #FFE57F 0%, #FF6EC4 50%, #66F0FF 100%);
+          box-shadow: 0 0 14px rgba(255, 20, 147, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+        }
+        .vegas-scroll::-webkit-scrollbar-corner {
+          background: transparent;
+        }
+        /* Firefox */
+        .vegas-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: #FF1493 rgba(20, 0, 40, 0.7);
+        }
+      `}</style>
       {/* 背景閃光點：CSS-only stars */}
       <div
         aria-hidden
@@ -249,13 +279,19 @@ export default function WorldCup2026Page() {
               return (
                 <div
                   key={`${m.date}-${m.time}-${m.title}`}
-                  className="group relative min-h-[140px] overflow-hidden rounded-lg transition-transform hover:scale-[1.02]"
+                  className={`group relative min-h-[140px] overflow-hidden rounded-lg transition-transform hover:scale-[1.02] ${
+                    m.wide ? "sm:col-span-2 lg:col-span-3" : ""
+                  }`}
                   style={{
-                    background:
-                      "linear-gradient(135deg, rgba(76, 0, 153, 0.25), rgba(20, 0, 40, 0.6))",
-                    border: "1px solid rgba(255, 20, 147, 0.35)",
-                    boxShadow:
-                      "0 0 14px rgba(255, 20, 147, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+                    background: m.wide
+                      ? "linear-gradient(135deg, rgba(255, 20, 147, 0.25), rgba(255, 215, 0, 0.18), rgba(0, 229, 255, 0.2))"
+                      : "linear-gradient(135deg, rgba(76, 0, 153, 0.25), rgba(20, 0, 40, 0.6))",
+                    border: m.wide
+                      ? "1px solid rgba(255, 215, 0, 0.6)"
+                      : "1px solid rgba(255, 20, 147, 0.35)",
+                    boxShadow: m.wide
+                      ? "0 0 24px rgba(255, 215, 0, 0.35), 0 0 18px rgba(255, 20, 147, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)"
+                      : "0 0 14px rgba(255, 20, 147, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
                   }}
                 >
                   {/* 預設層：比賽資訊 */}
@@ -456,7 +492,7 @@ function ScheduleGrid({
       </div>
 
       <div
-        className="overflow-x-auto rounded-lg"
+        className="vegas-scroll overflow-x-auto rounded-lg"
         style={{
           background: "linear-gradient(180deg, rgba(255,215,0,0.05), rgba(0,0,0,0.4))",
           border: "1px solid rgba(255, 215, 0, 0.25)",
