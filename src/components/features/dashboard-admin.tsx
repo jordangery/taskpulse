@@ -78,6 +78,38 @@ function computeJiraTopStats(issues: JiraIssue[]) {
   }
 }
 
+// 過濾「專案版號」要顯示哪些 project
+// 優先順序：
+//   1. env JIRA_VERSION_PROJECT_KEYS 有設且非 "*" → 那個 allowlist
+//   2. env 設 "*" → 全部
+//   3. env 沒設 → 從 team Jira 撈到的 issue keys 反推哪些 project 有票 → 只顯示那些
+//   4. 都沒有 → 全部（first-time setup 避免空白）
+function filterVersionProjects<T extends { projectKey: string }>(
+  all: T[],
+  teamIssues: { key: string }[],
+): T[] {
+  const envValue = process.env.JIRA_VERSION_PROJECT_KEYS?.trim()
+  if (envValue && envValue !== "*") {
+    const keys = new Set(
+      envValue
+        .split(",")
+        .map((k) => k.trim())
+        .filter(Boolean),
+    )
+    return all.filter((p) => keys.has(p.projectKey))
+  }
+  if (envValue === "*") return all
+
+  // 從 team issues 推導 project keys
+  const teamKeys = new Set<string>()
+  for (const issue of teamIssues) {
+    const dash = issue.key.indexOf("-")
+    if (dash > 0) teamKeys.add(issue.key.slice(0, dash))
+  }
+  if (teamKeys.size === 0) return all
+  return all.filter((p) => teamKeys.has(p.projectKey))
+}
+
 async function fetchRecentUpdates() {
   return prisma.progressUpdate.findMany({
     take: 5,
@@ -108,6 +140,17 @@ export async function DashboardAdmin() {
   const jiraIssues = teamJira.kind === "ok" ? teamJira.issues : []
   const { peopleTasks, freq, completedThisWeek } = computeJiraTopStats(jiraIssues)
 
+  // 專案版號 bar：預設只顯示「團隊有票」的 project（避免列出 50 個你不在意的後台 project）
+  // 想顯示完整清單 → JIRA_VERSION_PROJECT_KEYS=* （明確要 all 才 all）
+  // 想自訂白名單 → JIRA_VERSION_PROJECT_KEYS="BB1,YY1,HEYT"
+  const filteredVersions =
+    projectVersions.kind === "ok"
+      ? {
+          ...projectVersions,
+          projects: filterVersionProjects(projectVersions.projects, jiraIssues),
+        }
+      : projectVersions
+
   return (
     <div className="flex flex-1 flex-col px-6 py-6">
       <div className="mx-auto w-full max-w-7xl space-y-6">
@@ -118,7 +161,7 @@ export async function DashboardAdmin() {
           </p>
         </header>
 
-        <ProjectVersionsBar result={projectVersions} />
+        <ProjectVersionsBar result={filteredVersions} />
 
         {jiraWriteEnabled() && pendingJiraSync > 0 && (
           <form
