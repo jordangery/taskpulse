@@ -301,18 +301,27 @@ export default function WorldCup2026Page() {
                       <p className="text-xs text-amber-100/70">這個時段沒有人在班 — 注意覆蓋</p>
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
-                        {[...duty.iOS, ...duty.Android].map((p) => {
+                        {[
+                          ...duty.iOS.map((p) => ({ ...p, team: "iOS" as const })),
+                          ...duty.Android.map((p) => ({ ...p, team: "Android" as const })),
+                        ].map((p) => {
                           const c = SHIFT_COLORS[p.shift]
+                          // iOS 用粉紅外框 / Android 用青色外框，跟頁面下方的隊伍主色一致
+                          const teamRing =
+                            p.team === "iOS" ? "0 0 0 2px #FF1493" : "0 0 0 2px #00E5FF"
                           return (
                             <span
-                              key={`${m.date}-${m.time}-${p.name}`}
+                              key={`${m.date}-${m.time}-${p.team}-${p.name}`}
                               className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[12px] font-bold"
                               style={{
                                 background: c.bg,
                                 color: c.text,
-                                boxShadow: c.ring,
+                                boxShadow: `${teamRing}, ${c.ring}`,
                               }}
                             >
+                              <span className="text-sm leading-none">
+                                {p.team === "iOS" ? "📱" : "🤖"}
+                              </span>
                               {p.name}
                               <span className="text-[10px] opacity-80">·{CELL_LABEL[p.shift]}</span>
                             </span>
