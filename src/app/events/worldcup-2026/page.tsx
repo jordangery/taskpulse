@@ -249,7 +249,7 @@ export default function WorldCup2026Page() {
               return (
                 <div
                   key={`${m.date}-${m.time}-${m.title}`}
-                  className="group relative rounded-lg px-4 py-3 transition-transform hover:scale-[1.02]"
+                  className="group relative min-h-[140px] overflow-hidden rounded-lg transition-transform hover:scale-[1.02]"
                   style={{
                     background:
                       "linear-gradient(135deg, rgba(76, 0, 153, 0.25), rgba(20, 0, 40, 0.6))",
@@ -258,36 +258,37 @@ export default function WorldCup2026Page() {
                       "0 0 14px rgba(255, 20, 147, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
                   }}
                 >
-                  <div className="flex items-baseline justify-between">
-                    <span
-                      className="font-mono text-sm font-bold text-pink-300"
-                      style={{ textShadow: "0 0 8px rgba(255,20,147,0.7)" }}
+                  {/* 預設層：比賽資訊 */}
+                  <div className="px-4 py-3 transition-opacity duration-200 group-hover:opacity-0">
+                    <div className="flex items-baseline justify-between">
+                      <span
+                        className="font-mono text-sm font-bold text-pink-300"
+                        style={{ textShadow: "0 0 8px rgba(255,20,147,0.7)" }}
+                      >
+                        {m.date}
+                      </span>
+                      <span className="text-xs text-amber-200/70">{m.time}</span>
+                    </div>
+                    <p className="mt-1 text-base font-bold text-amber-100">{m.title}</p>
+                    {m.stage && (
+                      <p className="mt-0.5 text-[11px] uppercase tracking-wider text-amber-300/60">
+                        {m.stage}
+                      </p>
+                    )}
+                    <p
+                      className="mt-2 text-[10px] uppercase tracking-widest text-cyan-300/70"
+                      style={{ textShadow: "0 0 6px rgba(0,229,255,0.5)" }}
                     >
-                      {m.date}
-                    </span>
-                    <span className="text-xs text-amber-200/70">{m.time}</span>
-                  </div>
-                  <p className="mt-1 text-base font-bold text-amber-100">{m.title}</p>
-                  {m.stage && (
-                    <p className="mt-0.5 text-[11px] uppercase tracking-wider text-amber-300/60">
-                      {m.stage}
+                      {totalOn > 0 ? `🎧 hover 看 ${totalOn} 位值班` : "🌙 此時段無人值班"}
                     </p>
-                  )}
-                  <p
-                    className="mt-2 text-[10px] uppercase tracking-widest text-cyan-300/70"
-                    style={{ textShadow: "0 0 6px rgba(0,229,255,0.5)" }}
-                  >
-                    {totalOn > 0 ? `🎧 hover 看 ${totalOn} 位值班` : "🌙 此時段無人值班"}
-                  </p>
+                  </div>
 
-                  {/* hover tooltip — 顯示當下值班 */}
+                  {/* hover 覆蓋層：值班名單 — 蓋在卡片上、不外伸 */}
                   <div
-                    className="invisible absolute left-0 right-0 top-full z-30 mt-2 rounded-lg px-3.5 py-3 opacity-0 transition-opacity duration-150 group-hover:visible group-hover:opacity-100"
+                    className="absolute inset-0 flex flex-col px-4 py-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
                     style={{
                       background: "#15001f",
-                      border: "1px solid rgba(0, 229, 255, 0.7)",
-                      boxShadow:
-                        "0 0 22px rgba(0, 229, 255, 0.45), 0 12px 28px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.08)",
+                      borderLeft: "3px solid rgba(0, 229, 255, 0.8)",
                     }}
                   >
                     <p
