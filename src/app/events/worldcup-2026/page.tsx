@@ -5,6 +5,7 @@
 
 import Link from "next/link"
 import { DATES, HEADLINE_MATCHES, type ShiftCode, TEAMS, WEEKDAYS } from "./schedule-data"
+import { SoccerBalls } from "./soccer-balls"
 
 export const metadata = {
   title: "WORLD CUP 2026 · 格里昂 APP 戰隊",
@@ -104,15 +105,18 @@ export default function WorldCup2026Page() {
   const ended = daysToEnd < 0
 
   return (
-    <div
-      className="vegas-scroll fixed inset-0 z-50 overflow-y-auto overflow-x-hidden px-6 py-10"
-      style={{
-        background: "radial-gradient(ellipse at top, #2a0040 0%, #0a0014 45%, #000000 100%)",
-        color: "#fff",
-      }}
-    >
-      {/* 主題化 scrollbar — 套用整頁 & 排班表 */}
-      <style>{`
+    <>
+      {/* 互動裝飾：在整個 viewport 浮著 24 顆球，滑鼠靠近會被踢開 */}
+      <SoccerBalls />
+      <div
+        className="vegas-scroll fixed inset-0 z-50 overflow-y-auto overflow-x-hidden px-6 py-10"
+        style={{
+          background: "radial-gradient(ellipse at top, #2a0040 0%, #0a0014 45%, #000000 100%)",
+          color: "#fff",
+        }}
+      >
+        {/* 主題化 scrollbar — 套用整頁 & 排班表 */}
+        <style>{`
         .vegas-scroll::-webkit-scrollbar {
           width: 10px;
           height: 10px;
@@ -141,297 +145,301 @@ export default function WorldCup2026Page() {
           scrollbar-color: #FF1493 rgba(20, 0, 40, 0.7);
         }
       `}</style>
-      {/* 背景閃光點：CSS-only stars */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-60"
-        style={{
-          backgroundImage:
-            "radial-gradient(2px 2px at 20% 30%, #FFD700 0%, transparent 50%), radial-gradient(1.5px 1.5px at 70% 60%, #FF1493 0%, transparent 50%), radial-gradient(1px 1px at 40% 80%, #00E5FF 0%, transparent 50%), radial-gradient(2px 2px at 85% 20%, #FFD700 0%, transparent 50%), radial-gradient(1.5px 1.5px at 15% 70%, #FFFFFF 0%, transparent 50%)",
-          backgroundSize: "100% 100%",
-        }}
-      />
-
-      <div className="relative mx-auto max-w-6xl space-y-10">
-        {/* Back link */}
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1 text-xs tracking-wider text-amber-300 transition hover:text-amber-200"
-          style={{ textShadow: "0 0 8px rgba(255, 200, 0, 0.5)" }}
-        >
-          ← BACK TO DASHBOARD
-        </Link>
-
-        {/* HERO */}
-        <header className="text-center">
-          <p
-            className="mb-2 text-xs tracking-[0.5em] text-pink-400"
-            style={{ textShadow: "0 0 10px rgba(255, 20, 147, 0.8)" }}
-          >
-            FIFA WORLD CUP · UNITED 2026
-          </p>
-          <h1
-            className="text-6xl font-black uppercase tracking-tight md:text-8xl"
-            style={{
-              backgroundImage:
-                "linear-gradient(180deg, #FFE57F 0%, #FFD700 35%, #FF9800 70%, #C68B00 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-              filter: "drop-shadow(0 0 25px rgba(255, 215, 0, 0.45))",
-              fontFamily: "'Impact', 'Oswald', 'Helvetica Neue', sans-serif",
-              letterSpacing: "-0.02em",
-            }}
-          >
-            World Cup
-            <br />
-            2026
-          </h1>
-          <p
-            className="mt-3 text-2xl font-bold text-amber-200"
-            style={{ textShadow: "0 0 14px rgba(255, 215, 0, 0.6)" }}
-          >
-            🇨🇦 🇲🇽 🇺🇸 · 6/11 — 7/19
-          </p>
-          <p className="mt-1 text-sm tracking-widest text-pink-300/80">
-            格里昂 APP 戰隊 · 全員上線
-          </p>
-
-          {/* Countdown */}
-          <div
-            className="mt-6 inline-flex items-baseline gap-3 rounded-md px-5 py-3"
-            style={{
-              background:
-                "linear-gradient(90deg, rgba(255,20,147,0.15), rgba(255,215,0,0.15), rgba(0,229,255,0.15))",
-              boxShadow: "0 0 25px rgba(255, 215, 0, 0.3), inset 0 0 12px rgba(255, 20, 147, 0.2)",
-              border: "1px solid rgba(255, 215, 0, 0.4)",
-            }}
-          >
-            {ended ? (
-              <span className="text-lg font-bold text-amber-200">賽事已落幕 🏆</span>
-            ) : inProgress ? (
-              <>
-                <span className="text-xs uppercase tracking-widest text-pink-300">LIVE NOW</span>
-                <span className="text-3xl font-black text-amber-300">{daysToEnd}</span>
-                <span className="text-sm text-amber-100">天到收官</span>
-              </>
-            ) : (
-              <>
-                <span className="text-xs uppercase tracking-widest text-pink-300">COUNTDOWN</span>
-                <span
-                  className="text-5xl font-black"
-                  style={{
-                    backgroundImage: "linear-gradient(180deg, #FF6EC4, #FFD700, #00E5FF)",
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
-                    backgroundClip: "text",
-                    filter: "drop-shadow(0 0 12px rgba(255, 110, 196, 0.6))",
-                  }}
-                >
-                  {daysToStart}
-                </span>
-                <span className="text-sm text-amber-100">天開踢</span>
-              </>
-            )}
-          </div>
-        </header>
-
-        {/* TOURNAMENT STATS */}
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {[
-            { v: "48", k: "支隊伍" },
-            { v: "16", k: "主辦城市" },
-            { v: "104", k: "場比賽" },
-            { v: "39", k: "天作戰" },
-          ].map((s) => (
-            <div
-              key={s.k}
-              className="rounded-lg px-4 py-5 text-center"
-              style={{
-                background: "rgba(255, 215, 0, 0.08)",
-                border: "1px solid rgba(255, 215, 0, 0.3)",
-                boxShadow: "0 0 18px rgba(255, 215, 0, 0.15)",
-                backdropFilter: "blur(6px)",
-              }}
-            >
-              <p
-                className="text-4xl font-black text-amber-300"
-                style={{ textShadow: "0 0 12px rgba(255, 215, 0, 0.7)" }}
-              >
-                {s.v}
-              </p>
-              <p className="mt-1 text-xs tracking-widest text-amber-100/80">{s.k}</p>
-            </div>
-          ))}
-        </section>
-
-        {/* HEADLINE MATCHES */}
-        <section>
-          <SectionTitle
-            kicker="HIGHLIGHT MATCHES"
-            title="關鍵戰役"
-            tail={`開幕到捧盃 · ${HEADLINE_MATCHES.length} 場別錯過 · 全部以台北時間 (UTC+8) 表示`}
-          />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {HEADLINE_MATCHES.map((m) => {
-              const duty = onDutyAt(m.date, m.time)
-              const totalOn = duty.iOS.length + duty.Android.length
-              return (
-                <div
-                  key={`${m.date}-${m.time}-${m.title}`}
-                  className={`group relative min-h-[140px] overflow-hidden rounded-lg transition-transform hover:scale-[1.02] ${
-                    m.wide ? "sm:col-span-2 lg:col-span-3" : ""
-                  }`}
-                  style={{
-                    background: m.wide
-                      ? "linear-gradient(135deg, rgba(255, 20, 147, 0.25), rgba(255, 215, 0, 0.18), rgba(0, 229, 255, 0.2))"
-                      : "linear-gradient(135deg, rgba(76, 0, 153, 0.25), rgba(20, 0, 40, 0.6))",
-                    border: m.wide
-                      ? "1px solid rgba(255, 215, 0, 0.6)"
-                      : "1px solid rgba(255, 20, 147, 0.35)",
-                    boxShadow: m.wide
-                      ? "0 0 24px rgba(255, 215, 0, 0.35), 0 0 18px rgba(255, 20, 147, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)"
-                      : "0 0 14px rgba(255, 20, 147, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
-                  }}
-                >
-                  {/* 預設層：比賽資訊 */}
-                  <div className="px-4 py-3 transition-opacity duration-200 group-hover:opacity-0">
-                    <div className="flex items-baseline justify-between">
-                      <span
-                        className="font-mono text-sm font-bold text-pink-300"
-                        style={{ textShadow: "0 0 8px rgba(255,20,147,0.7)" }}
-                      >
-                        {m.date}
-                      </span>
-                      <span className="text-xs text-amber-200/70">{m.time}</span>
-                    </div>
-                    <p className="mt-1 text-base font-bold text-amber-100">{m.title}</p>
-                    {m.stage && (
-                      <p className="mt-0.5 text-[11px] uppercase tracking-wider text-amber-300/60">
-                        {m.stage}
-                      </p>
-                    )}
-                    <p
-                      className="mt-2 text-[10px] uppercase tracking-widest text-cyan-300/70"
-                      style={{ textShadow: "0 0 6px rgba(0,229,255,0.5)" }}
-                    >
-                      {totalOn > 0 ? `🎧 hover 看 ${totalOn} 位值班` : "🌙 此時段無人值班"}
-                    </p>
-                  </div>
-
-                  {/* hover 覆蓋層：值班名單 — 蓋在卡片上、不外伸 */}
-                  <div
-                    className="absolute inset-0 flex flex-col px-4 py-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-                    style={{
-                      background: "#15001f",
-                      borderLeft: "3px solid rgba(0, 229, 255, 0.8)",
-                    }}
-                  >
-                    <p
-                      className="mb-2 text-[11px] font-bold tracking-widest text-cyan-300"
-                      style={{ textShadow: "0 0 8px rgba(0,229,255,0.7)" }}
-                    >
-                      值班 · {m.date} {m.time}
-                    </p>
-                    {totalOn === 0 ? (
-                      <p className="text-xs text-amber-100/70">這個時段沒有人在班 — 注意覆蓋</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {[
-                          ...duty.iOS.map((p) => ({ ...p, team: "iOS" as const })),
-                          ...duty.Android.map((p) => ({ ...p, team: "Android" as const })),
-                        ].map((p) => {
-                          const c = SHIFT_COLORS[p.shift]
-                          // iOS 用粉紅外框 / Android 用青色外框，跟頁面下方的隊伍主色一致
-                          const teamRing =
-                            p.team === "iOS" ? "0 0 0 2px #FF1493" : "0 0 0 2px #00E5FF"
-                          return (
-                            <span
-                              key={`${m.date}-${m.time}-${p.team}-${p.name}`}
-                              className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[12px] font-bold"
-                              style={{
-                                background: c.bg,
-                                color: c.text,
-                                boxShadow: `${teamRing}, ${c.ring}`,
-                              }}
-                            >
-                              <span className="text-sm leading-none">
-                                {p.team === "iOS" ? "📱" : "🤖"}
-                              </span>
-                              {p.name}
-                              <span className="text-[10px] opacity-80">·{CELL_LABEL[p.shift]}</span>
-                            </span>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-
-        {/* DIVIDER */}
+        {/* 背景閃光點：CSS-only stars */}
         <div
-          className="mx-auto h-px w-3/4"
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-60"
           style={{
-            background:
-              "linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.8), rgba(255, 20, 147, 0.8), rgba(0, 229, 255, 0.6), transparent)",
-            boxShadow: "0 0 16px rgba(255, 215, 0, 0.5)",
+            backgroundImage:
+              "radial-gradient(2px 2px at 20% 30%, #FFD700 0%, transparent 50%), radial-gradient(1.5px 1.5px at 70% 60%, #FF1493 0%, transparent 50%), radial-gradient(1px 1px at 40% 80%, #00E5FF 0%, transparent 50%), radial-gradient(2px 2px at 85% 20%, #FFD700 0%, transparent 50%), radial-gradient(1.5px 1.5px at 15% 70%, #FFFFFF 0%, transparent 50%)",
+            backgroundSize: "100% 100%",
           }}
         />
 
-        {/* STAFF SCHEDULE */}
-        <section>
-          <SectionTitle
-            kicker="GERYON APP TEAM · DUTY ROSTER"
-            title="作戰排班表"
-            tail="iOS 5 人 · Android 7 人 · 6/1 — 7/31 共 61 天"
-          />
+        <div className="relative mx-auto max-w-6xl space-y-10">
+          {/* Back link */}
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1 text-xs tracking-wider text-amber-300 transition hover:text-amber-200"
+            style={{ textShadow: "0 0 8px rgba(255, 200, 0, 0.5)" }}
+          >
+            ← BACK TO DASHBOARD
+          </Link>
 
-          {/* Legend */}
-          <div className="mb-4 flex flex-wrap gap-2 text-xs">
-            {(["M", "N", "H", "off"] as ShiftCode[]).map((s) => (
-              <span
-                key={s}
-                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1"
+          {/* HERO */}
+          <header className="text-center">
+            <p
+              className="mb-2 text-xs tracking-[0.5em] text-pink-400"
+              style={{ textShadow: "0 0 10px rgba(255, 20, 147, 0.8)" }}
+            >
+              FIFA WORLD CUP · UNITED 2026
+            </p>
+            <h1
+              className="text-6xl font-black uppercase tracking-tight md:text-8xl"
+              style={{
+                backgroundImage:
+                  "linear-gradient(180deg, #FFE57F 0%, #FFD700 35%, #FF9800 70%, #C68B00 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+                filter: "drop-shadow(0 0 25px rgba(255, 215, 0, 0.45))",
+                fontFamily: "'Impact', 'Oswald', 'Helvetica Neue', sans-serif",
+                letterSpacing: "-0.02em",
+              }}
+            >
+              World Cup
+              <br />
+              2026
+            </h1>
+            <p
+              className="mt-3 text-2xl font-bold text-amber-200"
+              style={{ textShadow: "0 0 14px rgba(255, 215, 0, 0.6)" }}
+            >
+              🇨🇦 🇲🇽 🇺🇸 · 6/11 — 7/19
+            </p>
+            <p className="mt-1 text-sm tracking-widest text-pink-300/80">
+              格里昂 APP 戰隊 · 全員上線
+            </p>
+
+            {/* Countdown */}
+            <div
+              className="mt-6 inline-flex items-baseline gap-3 rounded-md px-5 py-3"
+              style={{
+                background:
+                  "linear-gradient(90deg, rgba(255,20,147,0.15), rgba(255,215,0,0.15), rgba(0,229,255,0.15))",
+                boxShadow:
+                  "0 0 25px rgba(255, 215, 0, 0.3), inset 0 0 12px rgba(255, 20, 147, 0.2)",
+                border: "1px solid rgba(255, 215, 0, 0.4)",
+              }}
+            >
+              {ended ? (
+                <span className="text-lg font-bold text-amber-200">賽事已落幕 🏆</span>
+              ) : inProgress ? (
+                <>
+                  <span className="text-xs uppercase tracking-widest text-pink-300">LIVE NOW</span>
+                  <span className="text-3xl font-black text-amber-300">{daysToEnd}</span>
+                  <span className="text-sm text-amber-100">天到收官</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-xs uppercase tracking-widest text-pink-300">COUNTDOWN</span>
+                  <span
+                    className="text-5xl font-black"
+                    style={{
+                      backgroundImage: "linear-gradient(180deg, #FF6EC4, #FFD700, #00E5FF)",
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                      backgroundClip: "text",
+                      filter: "drop-shadow(0 0 12px rgba(255, 110, 196, 0.6))",
+                    }}
+                  >
+                    {daysToStart}
+                  </span>
+                  <span className="text-sm text-amber-100">天開踢</span>
+                </>
+              )}
+            </div>
+          </header>
+
+          {/* TOURNAMENT STATS */}
+          <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {[
+              { v: "48", k: "支隊伍" },
+              { v: "16", k: "主辦城市" },
+              { v: "104", k: "場比賽" },
+              { v: "39", k: "天作戰" },
+            ].map((s) => (
+              <div
+                key={s.k}
+                className="rounded-lg px-4 py-5 text-center"
                 style={{
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "rgba(255, 215, 0, 0.08)",
+                  border: "1px solid rgba(255, 215, 0, 0.3)",
+                  boxShadow: "0 0 18px rgba(255, 215, 0, 0.15)",
+                  backdropFilter: "blur(6px)",
                 }}
               >
-                <span
-                  className="inline-block h-3 w-5 rounded-sm"
-                  style={{
-                    background: SHIFT_COLORS[s].bg,
-                    boxShadow: SHIFT_COLORS[s].ring,
-                  }}
-                />
-                <span className="text-amber-100/80">{SHIFT_COLORS[s].label}</span>
-              </span>
+                <p
+                  className="text-4xl font-black text-amber-300"
+                  style={{ textShadow: "0 0 12px rgba(255, 215, 0, 0.7)" }}
+                >
+                  {s.v}
+                </p>
+                <p className="mt-1 text-xs tracking-widest text-amber-100/80">{s.k}</p>
+              </div>
             ))}
-          </div>
+          </section>
 
-          {TEAMS.map((team) => (
-            <ScheduleGrid key={team.team} team={team.team} members={team.members} />
-          ))}
-        </section>
+          {/* HEADLINE MATCHES */}
+          <section>
+            <SectionTitle
+              kicker="HIGHLIGHT MATCHES"
+              title="關鍵戰役"
+              tail={`開幕到捧盃 · ${HEADLINE_MATCHES.length} 場別錯過 · 全部以台北時間 (UTC+8) 表示`}
+            />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {HEADLINE_MATCHES.map((m) => {
+                const duty = onDutyAt(m.date, m.time)
+                const totalOn = duty.iOS.length + duty.Android.length
+                return (
+                  <div
+                    key={`${m.date}-${m.time}-${m.title}`}
+                    className={`group relative min-h-[140px] overflow-hidden rounded-lg transition-transform hover:scale-[1.02] ${
+                      m.wide ? "sm:col-span-2 lg:col-span-3" : ""
+                    }`}
+                    style={{
+                      background: m.wide
+                        ? "linear-gradient(135deg, rgba(255, 20, 147, 0.25), rgba(255, 215, 0, 0.18), rgba(0, 229, 255, 0.2))"
+                        : "linear-gradient(135deg, rgba(76, 0, 153, 0.25), rgba(20, 0, 40, 0.6))",
+                      border: m.wide
+                        ? "1px solid rgba(255, 215, 0, 0.6)"
+                        : "1px solid rgba(255, 20, 147, 0.35)",
+                      boxShadow: m.wide
+                        ? "0 0 24px rgba(255, 215, 0, 0.35), 0 0 18px rgba(255, 20, 147, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)"
+                        : "0 0 14px rgba(255, 20, 147, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+                    }}
+                  >
+                    {/* 預設層：比賽資訊 */}
+                    <div className="px-4 py-3 transition-opacity duration-200 group-hover:opacity-0">
+                      <div className="flex items-baseline justify-between">
+                        <span
+                          className="font-mono text-sm font-bold text-pink-300"
+                          style={{ textShadow: "0 0 8px rgba(255,20,147,0.7)" }}
+                        >
+                          {m.date}
+                        </span>
+                        <span className="text-xs text-amber-200/70">{m.time}</span>
+                      </div>
+                      <p className="mt-1 text-base font-bold text-amber-100">{m.title}</p>
+                      {m.stage && (
+                        <p className="mt-0.5 text-[11px] uppercase tracking-wider text-amber-300/60">
+                          {m.stage}
+                        </p>
+                      )}
+                      <p
+                        className="mt-2 text-[10px] uppercase tracking-widest text-cyan-300/70"
+                        style={{ textShadow: "0 0 6px rgba(0,229,255,0.5)" }}
+                      >
+                        {totalOn > 0 ? `🎧 hover 看 ${totalOn} 位值班` : "🌙 此時段無人值班"}
+                      </p>
+                    </div>
 
-        {/* FOOTER */}
-        <footer className="pt-6 text-center">
-          <p
-            className="text-xs uppercase tracking-[0.4em] text-amber-300/60"
-            style={{ textShadow: "0 0 8px rgba(255, 215, 0, 0.4)" }}
-          >
-            ★ GERYON × WORLD CUP 2026 ★
-          </p>
-          <p className="mt-1 text-[11px] text-pink-300/40">
-            taskpulse internal event page · APP team only
-          </p>
-        </footer>
+                    {/* hover 覆蓋層：值班名單 — 蓋在卡片上、不外伸 */}
+                    <div
+                      className="absolute inset-0 flex flex-col px-4 py-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                      style={{
+                        background: "#15001f",
+                        borderLeft: "3px solid rgba(0, 229, 255, 0.8)",
+                      }}
+                    >
+                      <p
+                        className="mb-2 text-[11px] font-bold tracking-widest text-cyan-300"
+                        style={{ textShadow: "0 0 8px rgba(0,229,255,0.7)" }}
+                      >
+                        值班 · {m.date} {m.time}
+                      </p>
+                      {totalOn === 0 ? (
+                        <p className="text-xs text-amber-100/70">這個時段沒有人在班 — 注意覆蓋</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            ...duty.iOS.map((p) => ({ ...p, team: "iOS" as const })),
+                            ...duty.Android.map((p) => ({ ...p, team: "Android" as const })),
+                          ].map((p) => {
+                            const c = SHIFT_COLORS[p.shift]
+                            // iOS 用粉紅外框 / Android 用青色外框，跟頁面下方的隊伍主色一致
+                            const teamRing =
+                              p.team === "iOS" ? "0 0 0 2px #FF1493" : "0 0 0 2px #00E5FF"
+                            return (
+                              <span
+                                key={`${m.date}-${m.time}-${p.team}-${p.name}`}
+                                className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[12px] font-bold"
+                                style={{
+                                  background: c.bg,
+                                  color: c.text,
+                                  boxShadow: `${teamRing}, ${c.ring}`,
+                                }}
+                              >
+                                <span className="text-sm leading-none">
+                                  {p.team === "iOS" ? "📱" : "🤖"}
+                                </span>
+                                {p.name}
+                                <span className="text-[10px] opacity-80">
+                                  ·{CELL_LABEL[p.shift]}
+                                </span>
+                              </span>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+
+          {/* DIVIDER */}
+          <div
+            className="mx-auto h-px w-3/4"
+            style={{
+              background:
+                "linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.8), rgba(255, 20, 147, 0.8), rgba(0, 229, 255, 0.6), transparent)",
+              boxShadow: "0 0 16px rgba(255, 215, 0, 0.5)",
+            }}
+          />
+
+          {/* STAFF SCHEDULE */}
+          <section>
+            <SectionTitle
+              kicker="GERYON APP TEAM · DUTY ROSTER"
+              title="作戰排班表"
+              tail="iOS 5 人 · Android 7 人 · 6/1 — 7/31 共 61 天"
+            />
+
+            {/* Legend */}
+            <div className="mb-4 flex flex-wrap gap-2 text-xs">
+              {(["M", "N", "H", "off"] as ShiftCode[]).map((s) => (
+                <span
+                  key={s}
+                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1"
+                  style={{
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                  }}
+                >
+                  <span
+                    className="inline-block h-3 w-5 rounded-sm"
+                    style={{
+                      background: SHIFT_COLORS[s].bg,
+                      boxShadow: SHIFT_COLORS[s].ring,
+                    }}
+                  />
+                  <span className="text-amber-100/80">{SHIFT_COLORS[s].label}</span>
+                </span>
+              ))}
+            </div>
+
+            {TEAMS.map((team) => (
+              <ScheduleGrid key={team.team} team={team.team} members={team.members} />
+            ))}
+          </section>
+
+          {/* FOOTER */}
+          <footer className="pt-6 text-center">
+            <p
+              className="text-xs uppercase tracking-[0.4em] text-amber-300/60"
+              style={{ textShadow: "0 0 8px rgba(255, 215, 0, 0.4)" }}
+            >
+              ★ GERYON × WORLD CUP 2026 ★
+            </p>
+            <p className="mt-1 text-[11px] text-pink-300/40">
+              taskpulse internal event page · APP team only
+            </p>
+          </footer>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
