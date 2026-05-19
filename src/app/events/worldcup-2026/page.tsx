@@ -284,28 +284,39 @@ export default function WorldCup2026Page() {
                   <div
                     className="invisible absolute left-0 right-0 top-full z-30 mt-2 rounded-lg px-3.5 py-3 opacity-0 transition-opacity duration-150 group-hover:visible group-hover:opacity-100"
                     style={{
-                      background:
-                        "linear-gradient(135deg, rgba(15, 0, 30, 0.97), rgba(40, 0, 70, 0.97))",
-                      border: "1px solid rgba(0, 229, 255, 0.55)",
+                      background: "#15001f",
+                      border: "1px solid rgba(0, 229, 255, 0.7)",
                       boxShadow:
-                        "0 0 22px rgba(0, 229, 255, 0.4), 0 10px 28px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.08)",
-                      backdropFilter: "blur(8px)",
+                        "0 0 22px rgba(0, 229, 255, 0.45), 0 12px 28px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.08)",
                     }}
                   >
                     <p
-                      className="mb-2 text-[10px] uppercase tracking-[0.3em] text-cyan-300"
+                      className="mb-2 text-[11px] font-bold tracking-widest text-cyan-300"
                       style={{ textShadow: "0 0 8px rgba(0,229,255,0.7)" }}
                     >
-                      ★ ON DUTY · {m.date} {m.time}
+                      值班 · {m.date} {m.time}
                     </p>
                     {totalOn === 0 ? (
-                      <p className="text-xs text-amber-100/60">這個時段沒有人在班 — 注意覆蓋</p>
+                      <p className="text-xs text-amber-100/70">這個時段沒有人在班 — 注意覆蓋</p>
                     ) : (
-                      <div className="space-y-2">
-                        {duty.iOS.length > 0 && <DutyLine team="iOS" people={duty.iOS} />}
-                        {duty.Android.length > 0 && (
-                          <DutyLine team="Android" people={duty.Android} />
-                        )}
+                      <div className="flex flex-wrap gap-1.5">
+                        {[...duty.iOS, ...duty.Android].map((p) => {
+                          const c = SHIFT_COLORS[p.shift]
+                          return (
+                            <span
+                              key={`${m.date}-${m.time}-${p.name}`}
+                              className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[12px] font-bold"
+                              style={{
+                                background: c.bg,
+                                color: c.text,
+                                boxShadow: c.ring,
+                              }}
+                            >
+                              {p.name}
+                              <span className="text-[10px] opacity-80">·{CELL_LABEL[p.shift]}</span>
+                            </span>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
@@ -399,46 +410,6 @@ function SectionTitle({ kicker, title, tail }: { kicker: string; title: string; 
       </h2>
       {tail && <p className="mt-1 text-sm text-amber-100/60">{tail}</p>}
     </header>
-  )
-}
-
-function DutyLine({
-  team,
-  people,
-}: {
-  team: "iOS" | "Android"
-  people: { name: string; shift: Exclude<ShiftCode, "off"> }[]
-}) {
-  const teamColor = team === "iOS" ? "#FF6EC4" : "#00E5FF"
-  const teamLabel = team === "iOS" ? "📱 iOS" : "🤖 Android"
-  return (
-    <div>
-      <p
-        className="text-[10px] font-bold uppercase tracking-wider"
-        style={{ color: teamColor, textShadow: `0 0 6px ${teamColor}88` }}
-      >
-        {teamLabel}
-      </p>
-      <div className="mt-1 flex flex-wrap gap-1.5">
-        {people.map((p) => {
-          const c = SHIFT_COLORS[p.shift]
-          return (
-            <span
-              key={`${team}-${p.name}`}
-              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold"
-              style={{
-                background: c.bg,
-                color: c.text,
-                boxShadow: c.ring,
-              }}
-            >
-              {p.name}
-              <span className="text-[9px] opacity-75">·{CELL_LABEL[p.shift]}</span>
-            </span>
-          )
-        })}
-      </div>
-    </div>
   )
 }
 
