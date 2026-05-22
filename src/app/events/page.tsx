@@ -17,6 +17,14 @@ const FEATURED_EVENTS = [
       "linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,20,147,0.15), rgba(0,229,255,0.12))",
     badge: "🏆 客製專頁",
   },
+  {
+    href: "/events/rescue-deeplink",
+    title: "救援域名 Deeplink 落地頁部署（測試環境）",
+    range: "2026/5/22 部署 · BB + YY 兩品牌",
+    accent:
+      "linear-gradient(135deg, rgba(0,255,136,0.08), rgba(255,165,0,0.08), rgba(80,80,80,0.05))",
+    badge: "🛠️ 部署紀錄",
+  },
 ]
 
 function toDateKey(d: Date): string {
