@@ -12,10 +12,10 @@ import {
   jiraWriteEnabled,
 } from "@/lib/jira"
 import { bucketIdFor } from "@/lib/jira-buckets"
-import { ChartPeopleTasks } from "./chart-people-tasks"
 import { ChartUpdateFrequency } from "./chart-update-frequency"
 import { DashboardCalendar } from "./dashboard-calendar"
 import { DashboardJiraWidget } from "./dashboard-jira-widget"
+import { PeopleOpenJira } from "./people-open-jira"
 import { ProjectVersionsBar } from "./project-versions-bar"
 
 const WEEK_DAYS = 7
@@ -32,14 +32,14 @@ function formatDayLabel(d: Date): string {
 }
 
 // 把 team Jira issues 拆成 3 個 top stats：
-// 1. 每人未完成（依 assignee 分組，排除 done bucket）
+// 1. 每人未完成（依 assignee 分組，排除 done bucket）— 包含實際票清單給展開用
 // 2. 近 7 天 Jira 活動（依 updated 日期分桶，回最近 7 天）
 // 3. 本週完成數（done bucket 且 updated 在最近 7 天內）
 function computeJiraTopStats(issues: JiraIssue[]) {
   const today = startOfDay(new Date())
   const weekAgoMs = today.getTime() - (WEEK_DAYS - 1) * MS_PER_DAY
 
-  const peopleMap = new Map<string, number>()
+  const peopleIssuesMap = new Map<string, JiraIssue[]>()
   const dayBuckets = new Map<string, number>()
   let completedThisWeek = 0
 
@@ -51,7 +51,9 @@ function computeJiraTopStats(issues: JiraIssue[]) {
   for (const issue of issues) {
     const bucket = bucketIdFor(issue.status)
     if (bucket !== "done") {
-      peopleMap.set(issue.assigneeName, (peopleMap.get(issue.assigneeName) ?? 0) + 1)
+      const list = peopleIssuesMap.get(issue.assigneeName) ?? []
+      list.push(issue)
+      peopleIssuesMap.set(issue.assigneeName, list)
     }
     if (issue.updated) {
       const updatedDate = startOfDay(new Date(issue.updated))
@@ -65,9 +67,23 @@ function computeJiraTopStats(issues: JiraIssue[]) {
     }
   }
 
+  // 每人內部排序：dueDate 近的優先（null 排最後）、再用 updated desc
+  const sortIssues = (a: JiraIssue, b: JiraIssue) => {
+    if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate)
+    if (a.dueDate) return -1
+    if (b.dueDate) return 1
+    const aU = a.updated ?? ""
+    const bU = b.updated ?? ""
+    return bU.localeCompare(aU)
+  }
+
   return {
-    peopleTasks: Array.from(peopleMap.entries())
-      .map(([name, count]) => ({ name, count }))
+    peopleOpenJira: Array.from(peopleIssuesMap.entries())
+      .map(([name, list]) => ({
+        name,
+        count: list.length,
+        issues: list.slice().sort(sortIssues),
+      }))
       .sort((a, b) => b.count - a.count),
     freq: Array.from(dayBuckets.entries()).map(([date, count]) => ({
       date,
@@ -138,7 +154,7 @@ export async function DashboardAdmin() {
     ])
   // top 3 卡：純看 Jira 視角；team Jira 沒連上時用空 array 跑（chart 自然顯示 0）
   const jiraIssues = teamJira.kind === "ok" ? teamJira.issues : []
-  const { peopleTasks, freq, completedThisWeek } = computeJiraTopStats(jiraIssues)
+  const { peopleOpenJira, freq, completedThisWeek } = computeJiraTopStats(jiraIssues)
 
   // 專案版號 bar：預設只顯示「團隊有票」的 project（避免列出 50 個你不在意的後台 project）
   // 想顯示完整清單 → JIRA_VERSION_PROJECT_KEYS=* （明確要 all 才 all）
@@ -193,8 +209,8 @@ export async function DashboardAdmin() {
         </section>
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <Card title="每人未完成 Jira 票" hint="非已完成 bucket，依 assignee 分組">
-            <ChartPeopleTasks data={peopleTasks} />
+          <Card title="每人未完成 Jira 票" hint="點任一人展開未完成票清單">
+            <PeopleOpenJira data={peopleOpenJira} />
           </Card>
 
           <Card title="近 7 天 Jira 活動" hint="每天有多少張票被更新（任何狀態變動）">
