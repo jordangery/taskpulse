@@ -627,9 +627,10 @@ export async function fetchProjectVersionSummary(): Promise<ProjectVersionsResul
         return summary
       }),
     )
-    // 過濾掉完全沒版本資料的 project（沒設 Versions 的 project）
-    const filtered = summaries.filter((s) => s.latestReleased || s.nextUnreleased)
-    return { kind: "ok", projects: filtered }
+    // 不再過濾「沒設 Versions 的 project」— 有些 project（如 YY / YY1 / BB1）
+    // 沒設 fixVersions 但還是有票，chip 上顯示「尚無 released」即可
+    // dashboard-admin 的 filterVersionProjects 已經把「team 沒票的 project」剃掉
+    return { kind: "ok", projects: summaries }
   } catch (err) {
     return { kind: "error", message: err instanceof Error ? err.message : "未知錯誤" }
   }
