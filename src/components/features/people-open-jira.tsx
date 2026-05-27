@@ -18,7 +18,17 @@ interface Props {
 }
 
 export function PeopleOpenJira({ data }: Props) {
-  const [expanded, setExpanded] = useState<string | null>(null)
+  // 預設全部展開：把所有人的名字塞進 Set，點任一列再收起
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(data.map((d) => d.name)))
+
+  const toggle = (name: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
 
   if (data.length === 0) {
     return (
@@ -34,7 +44,7 @@ export function PeopleOpenJira({ data }: Props) {
   return (
     <ul className="space-y-1.5">
       {data.map((person) => {
-        const isOpen = expanded === person.name
+        const isOpen = expanded.has(person.name)
         const pct = Math.round((person.count / maxCount) * 100)
         return (
           <li
@@ -43,7 +53,7 @@ export function PeopleOpenJira({ data }: Props) {
           >
             <button
               type="button"
-              onClick={() => setExpanded(isOpen ? null : person.name)}
+              onClick={() => toggle(person.name)}
               aria-expanded={isOpen}
               className="block w-full px-3 py-2 text-left transition hover:bg-subtle"
             >
