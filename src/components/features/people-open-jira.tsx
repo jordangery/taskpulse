@@ -18,8 +18,8 @@ interface Props {
 }
 
 export function PeopleOpenJira({ data }: Props) {
-  // 3-col grid 排版，預設收合（每張卡片只顯示名字 + 進度條 + 票數）
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  // 3-col grid 排版，預設全部展開（items-start 讓 grid cell 不撐高、各卡片照自己高度顯示）
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(data.map((d) => d.name)))
 
   const toggle = (name: string) => {
     setExpanded((prev) => {
@@ -42,7 +42,7 @@ export function PeopleOpenJira({ data }: Props) {
   const maxCount = Math.max(...data.map((d) => d.count), 1)
 
   return (
-    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+    <ul className="grid grid-cols-1 items-start gap-2 sm:grid-cols-2 lg:grid-cols-3">
       {data.map((person) => {
         const isOpen = expanded.has(person.name)
         const pct = Math.round((person.count / maxCount) * 100)

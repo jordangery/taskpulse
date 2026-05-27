@@ -547,10 +547,18 @@ export type ProjectVersionsResult =
   | { kind: "ok"; projects: ProjectVersionSummary[] }
 
 /**
- * 用 admin token 撈所有 accessible project 的最新版號
- * 一個 project = 一個額外 API call（搜版本），用 Promise.allSettled 平行化
+ * 用 admin token 撈 project 版號資料
+ *
+ * @param projectKeys 要查的 project key 列表（通常從 team Jira 反推）。
+ *   傳入時：只查這幾個 project（保證涵蓋，即使該 project 排在 /project/search 第 50 名之後）
+ *   未傳入：fallback 撈所有 admin 看得到的 project（paginated）
+ *
+ * /project/search 一律會撈所有 project 的「key → name」對照表（用 pagination
+ * 避開 50 筆上限），這樣 projectKeys 給的任何 key 都能找到對應名稱
  */
-export async function fetchProjectVersionSummary(): Promise<ProjectVersionsResult> {
+export async function fetchProjectVersionSummary(
+  projectKeys?: string[],
+): Promise<ProjectVersionsResult> {
   if (!envConfigured()) return { kind: "not_configured" }
 
   const adminAccount = await prisma.account.findFirst({
@@ -566,34 +574,48 @@ export async function fetchProjectVersionSummary(): Promise<ProjectVersionsResul
     if (resources.length === 0) return { kind: "ok", projects: [] }
     const { id: cloudId } = resources[0]
 
-    // 撈所有 project（最多 50；如果你 org 超過要分頁，再加 pagination）
-    const projectsRes = await fetch(
-      `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/project/search?maxResults=50`,
-      {
-        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-        cache: "no-store",
-      },
-    )
-    if (!projectsRes.ok) {
-      return { kind: "error", message: `project/search ${projectsRes.status}` }
+    // 撈所有 project 的 key → name 對照表（pagination；safety cap 500 筆）
+    const nameMap = new Map<string, string>()
+    const PAGE_SIZE = 50
+    let startAt = 0
+    while (startAt < 500) {
+      const projectsRes = await fetch(
+        `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/project/search?maxResults=${PAGE_SIZE}&startAt=${startAt}`,
+        {
+          headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+          cache: "no-store",
+        },
+      )
+      if (!projectsRes.ok) {
+        return { kind: "error", message: `project/search ${projectsRes.status}` }
+      }
+      const data = (await projectsRes.json()) as {
+        values?: Array<{ key: string; name: string }>
+        isLast?: boolean
+      }
+      const values = data.values ?? []
+      for (const p of values) nameMap.set(p.key, p.name)
+      if (data.isLast || values.length < PAGE_SIZE) break
+      startAt += PAGE_SIZE
     }
-    const projectsData = (await projectsRes.json()) as {
-      values?: Array<{ key: string; name: string }>
-    }
-    const projects = projectsData.values ?? []
+
+    // 決定要查版本的 project keys
+    const keysToFetch =
+      projectKeys && projectKeys.length > 0 ? projectKeys : Array.from(nameMap.keys())
 
     const summaries = await Promise.all(
-      projects.map(async (p): Promise<ProjectVersionSummary> => {
+      keysToFetch.map(async (key): Promise<ProjectVersionSummary> => {
         const summary: ProjectVersionSummary = {
-          projectKey: p.key,
-          projectName: p.name,
+          projectKey: key,
+          // 若 nameMap 沒查到（少見：projectKey 是 team 票推導出的、但 search 沒列），fallback 用 key 當顯示名
+          projectName: nameMap.get(key) ?? key,
           latestReleased: null,
           nextUnreleased: null,
         }
         try {
           // 拿最新 released（依 releaseDate desc 取 1）
           const r1 = await fetch(
-            `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/project/${p.key}/version?status=released&orderBy=-releaseDate&maxResults=1`,
+            `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/project/${key}/version?status=released&orderBy=-releaseDate&maxResults=1`,
             {
               headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
               cache: "no-store",
@@ -608,7 +630,7 @@ export async function fetchProjectVersionSummary(): Promise<ProjectVersionsResul
           }
           // 拿最新 unreleased（開發中；依 startDate desc 取 1）
           const r2 = await fetch(
-            `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/project/${p.key}/version?status=unreleased&orderBy=-startDate&maxResults=1`,
+            `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/project/${key}/version?status=unreleased&orderBy=-startDate&maxResults=1`,
             {
               headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
               cache: "no-store",
@@ -627,9 +649,6 @@ export async function fetchProjectVersionSummary(): Promise<ProjectVersionsResul
         return summary
       }),
     )
-    // 不再過濾「沒設 Versions 的 project」— 有些 project（如 YY / YY1 / BB1）
-    // 沒設 fixVersions 但還是有票，chip 上顯示「尚無 released」即可
-    // dashboard-admin 的 filterVersionProjects 已經把「team 沒票的 project」剃掉
     return { kind: "ok", projects: summaries }
   } catch (err) {
     return { kind: "error", message: err instanceof Error ? err.message : "未知錯誤" }

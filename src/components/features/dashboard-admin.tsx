@@ -43,63 +43,45 @@ function computePeopleOpenJira(issues: JiraIssue[]) {
     .sort((a, b) => b.count - a.count)
 }
 
-// 過濾「專案版號」要顯示哪些 project
+// 決定「專案版號」要顯示哪些 project key（給 fetchProjectVersionSummary）
 // 優先順序：
 //   1. env JIRA_VERSION_PROJECT_KEYS 有設且非 "*" → 那個 allowlist
-//   2. env 設 "*" → 全部
-//   3. env 沒設 → 從 team Jira 撈到的 issue keys 反推哪些 project 有票 → 只顯示那些
-//   4. 都沒有 → 全部（first-time setup 避免空白）
-function filterVersionProjects<T extends { projectKey: string }>(
-  all: T[],
-  teamIssues: { key: string }[],
-): T[] {
+//   2. env 設 "*" → 回 undefined（fetchProjectVersionSummary 會自己撈所有）
+//   3. env 沒設 → 從 team Jira issue keys 反推（保證每個有票的 project 都會被查、不漏）
+function resolveVersionProjectKeys(teamIssues: { key: string }[]): string[] | undefined {
   const envValue = process.env.JIRA_VERSION_PROJECT_KEYS?.trim()
-  if (envValue && envValue !== "*") {
-    const keys = new Set(
-      envValue
-        .split(",")
-        .map((k) => k.trim())
-        .filter(Boolean),
-    )
-    return all.filter((p) => keys.has(p.projectKey))
+  if (envValue === "*") return undefined
+  if (envValue) {
+    return envValue
+      .split(",")
+      .map((k) => k.trim())
+      .filter(Boolean)
   }
-  if (envValue === "*") return all
-
-  // 從 team issues 推導 project keys
-  const teamKeys = new Set<string>()
+  const keys = new Set<string>()
   for (const issue of teamIssues) {
     const dash = issue.key.indexOf("-")
-    if (dash > 0) teamKeys.add(issue.key.slice(0, dash))
+    if (dash > 0) keys.add(issue.key.slice(0, dash))
   }
-  if (teamKeys.size === 0) return all
-  return all.filter((p) => teamKeys.has(p.projectKey))
+  // 沒票（teamJira 沒連上等）→ 回 undefined 讓 fetcher 撈所有
+  return keys.size > 0 ? Array.from(keys) : undefined
 }
 
 export async function DashboardAdmin() {
   const me = await requireAdmin()
-  const [activeTaskCount, calendar, pendingJiraSync, teamJira, projectVersions] = await Promise.all(
-    [
-      prisma.task.count({ where: { archivedAt: null } }),
-      fetchCalendarEvents(me.id, true),
-      prisma.task.count({ where: { archivedAt: null, jiraIssueKey: null } }),
-      fetchTeamJiraIssues(),
-      fetchProjectVersionSummary(),
-    ],
-  )
-  // top 3 卡：純看 Jira 視角；team Jira 沒連上時用空 array 跑（chart 自然顯示 0）
+  // Phase 1: 不依賴 team Jira 的 query 平行跑（含 fetchTeamJiraIssues 本身）
+  const [activeTaskCount, calendar, pendingJiraSync, teamJira] = await Promise.all([
+    prisma.task.count({ where: { archivedAt: null } }),
+    fetchCalendarEvents(me.id, true),
+    prisma.task.count({ where: { archivedAt: null, jiraIssueKey: null } }),
+    fetchTeamJiraIssues(),
+  ])
+  // top 3 卡：純看 Jira 視角；team Jira 沒連上時用空 array 跑
   const jiraIssues = teamJira.kind === "ok" ? teamJira.issues : []
   const peopleOpenJira = computePeopleOpenJira(jiraIssues)
 
-  // 專案版號 bar：預設只顯示「團隊有票」的 project（避免列出 50 個你不在意的後台 project）
-  // 想顯示完整清單 → JIRA_VERSION_PROJECT_KEYS=* （明確要 all 才 all）
-  // 想自訂白名單 → JIRA_VERSION_PROJECT_KEYS="BB1,YY1,HEYT"
-  const filteredVersions =
-    projectVersions.kind === "ok"
-      ? {
-          ...projectVersions,
-          projects: filterVersionProjects(projectVersions.projects, jiraIssues),
-        }
-      : projectVersions
+  // Phase 2: 用 team Jira 反推要查哪些 project 的版本（保證涵蓋）
+  const versionTargetKeys = resolveVersionProjectKeys(jiraIssues)
+  const projectVersions = await fetchProjectVersionSummary(versionTargetKeys)
 
   return (
     <div className="flex flex-1 flex-col px-6 py-6">
@@ -111,7 +93,7 @@ export async function DashboardAdmin() {
           </p>
         </header>
 
-        <ProjectVersionsBar result={filteredVersions} issues={jiraIssues} />
+        <ProjectVersionsBar result={projectVersions} issues={jiraIssues} />
 
         {jiraWriteEnabled() && pendingJiraSync > 0 && (
           <form
