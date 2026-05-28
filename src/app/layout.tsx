@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { AppHeader } from "@/components/app-header"
+import { RouteProgress } from "@/components/route-progress"
 import { ThemeProvider } from "@/components/theme-provider"
 import { fetchMyNotifications } from "@/lib/actions/notifications"
 import { getCurrentUser } from "@/lib/current-user"
@@ -28,6 +29,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       </head>
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
+          <RouteProgress />
           <AppHeader
             user={user ? { name: user.name, role: user.role } : null}
             notifications={notifications}
